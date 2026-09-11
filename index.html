@@ -172,6 +172,10 @@
   }
   .not strong { color: var(--ink); display: block; margin-bottom: 4px; }
   .fine { color: var(--muted); font-size: 15px; margin-top: 14px; text-align: center; }
+  .btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+  .center { text-align: center; margin: 14px 0 0; }
+  .alt { color: var(--navy); font-weight: 600; font-size: 16px; }
+  .links { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
 
   ::selection { background: #ffd9c2; }
 </style>
@@ -188,6 +192,15 @@
 </div>
 
 <script>
+/* =====================================================================
+   YOUR CONTACT DETAILS. The results screen's "Text me" button uses
+   these. Digits, spaces and dashes are fine for the phone number.
+   ===================================================================== */
+const CONTACT = {
+  phone: "000-000-0000",
+  email: "you@example.com"
+};
+
 /* =====================================================================
    EDIT THE WORDING HERE.
    Everything the results screen says lives in this one object.
@@ -271,6 +284,15 @@ const ALL_GOOD = {
 /* The line that goes at the bottom of every results screen. */
 const NOT_LINE = "This doesn't replace you or anyone who works for you. It handles the stuff that falls through the cracks when you're busy.";
 
+/* The "get in touch" block under the results. */
+const CONTACT_COPY = {
+  button: "Want this set up? Text me the details",
+  emailLink: "Or email me instead",
+  reassure: "No cost to look. I'll call you, we'll talk it through, and you decide.",
+  subject: "Shop Check results",
+  signoff: "Sent from Shop Check"
+};
+
 /* ---------------------------------------------------------------------
    Questions. "key" is what ends up in config.json.
    --------------------------------------------------------------------- */
@@ -297,7 +319,7 @@ const QUESTIONS = [
 const RULES = {
   missedCallTextBack: {
     strong: a => a.phone === "Nobody, it goes to voicemail" || a.phone === "I don't know",
-    weak:   a => false
+    weak:   a => a.phone === "Me, when I can"
   },
   quoteFollowUp: {
     strong: a => a.followUp === "Never",
@@ -416,6 +438,39 @@ function moduleCard(key, tagText, cls, strength) {
   ]);
 }
 
+/* The text that gets pre-filled into the SMS / email. Kept short on
+   purpose: sms: links have to survive being pasted into a phone's
+   messaging app. */
+function buildMessage(result) {
+  const lines = [];
+  lines.push(`Hi, it's ${answers.businessName} (${answers.trade}).`);
+  if (result.startHere) {
+    lines.push(`Shop Check says start with: ${MODULES[result.startHere].name}.`);
+    if (result.next.length) lines.push(`Next: ${result.next.map(k => MODULES[k].name).join(", ")}.`);
+  } else {
+    lines.push("Shop Check says: nothing urgent right now.");
+  }
+  lines.push(CONTACT_COPY.signoff);
+  return lines.join("\n");
+}
+
+/* iPhones want "sms:NUMBER&body=", Android wants "sms:NUMBER?body=". */
+function isApple() {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
+}
+function smsLink(number, body) {
+  const digits = number.replace(/[^\d+]/g, "");
+  const sep = isApple() ? "&" : "?";
+  return `sms:${digits}${sep}body=${encodeURIComponent(body)}`;
+}
+function mailLink(address, subject, body) {
+  return `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+function isDev() {
+  return new URLSearchParams(location.search).get("dev") === "1";
+}
+
 function renderResults() {
   setProgress(QUESTIONS.length, QUESTIONS.length);
   const result = evaluate(answers);
@@ -442,16 +497,25 @@ function renderResults() {
     NOT_LINE
   ]));
 
-  const dl = el("button", { class: "btn", text: "Download config.json", type: "button" });
-  dl.addEventListener("click", () => downloadConfig(result));
-  const again = el("button", { class: "btn ghost", text: "Start over", type: "button" });
+  const message = buildMessage(result);
+  const text = el("a", { class: "btn", href: smsLink(CONTACT.phone, message), text: CONTACT_COPY.button });
+  const mail = el("a", { class: "alt", href: mailLink(CONTACT.email, CONTACT_COPY.subject, message), text: CONTACT_COPY.emailLink });
+  screen.appendChild(el("div", { class: "row" }, [text]));
+  screen.appendChild(el("p", { class: "center" }, [mail]));
+  screen.appendChild(el("p", { class: "fine", text: CONTACT_COPY.reassure }));
+
+  if (isDev()) {
+    const dl = el("button", { class: "btn ghost", text: "Download config.json", type: "button" });
+    dl.addEventListener("click", () => downloadConfig(result));
+    screen.appendChild(el("div", { class: "row" }, [dl]));
+  }
+
+  const again = el("button", { class: "back", text: "Start over", type: "button" });
   again.addEventListener("click", () => { for (const k in answers) delete answers[k]; index = 0; render(); });
   const back = el("button", { class: "back", text: "← Back", type: "button" });
   back.addEventListener("click", () => { index = QUESTIONS.length - 1; render(); });
 
-  screen.appendChild(el("div", { class: "row" }, [dl, again]));
-  screen.appendChild(el("p", { class: "fine", text: "Your answers stay on this device. Nothing is sent anywhere." }));
-  screen.appendChild(back);
+  screen.appendChild(el("div", { class: "links" }, [back, again]));
   app.appendChild(screen);
   window.scrollTo(0, 0);
 }
@@ -481,7 +545,7 @@ function downloadConfig(result) {
 }
 
 /* Exposed for testing in the console: ShopCheck.evaluate({...answers}) */
-window.ShopCheck = { evaluate, buildConfig, MODULES, QUESTIONS, RULES };
+window.ShopCheck = { evaluate, buildConfig, buildMessage, smsLink, mailLink, MODULES, QUESTIONS, RULES, CONTACT };
 
 render();
 </script>
