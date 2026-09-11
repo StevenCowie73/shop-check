@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Shop Check</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --card: #ffffff;
+    --ink: #1d2126;
+    --muted: #5d6570;
+    --line: #d9d3c6;
+    --accent: #e8641b;
+    --accent-ink: #ffffff;
+    --navy: #16324f;
+    --good: #2e7d4f;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 18px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+    min-height: 100dvh;
+  }
+  .wrap {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 16px 16px 40px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0 16px;
+  }
+  .brand {
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: 0.2px;
+    color: var(--navy);
+  }
+  .brand span { color: var(--accent); }
+  .step { color: var(--muted); font-size: 15px; font-weight: 600; }
+  .bar {
+    height: 6px;
+    background: var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .bar > div {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 220ms ease;
+  }
+  .screen { display: none; }
+  .screen.active { display: block; animation: rise 200ms ease; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  h1 {
+    font-size: 26px;
+    line-height: 1.2;
+    margin: 0 0 8px;
+    font-weight: 800;
+  }
+  .lead { color: var(--muted); margin: 0 0 22px; }
+
+  .choices { display: grid; gap: 12px; }
+  .choice, .btn {
+    appearance: none;
+    width: 100%;
+    min-height: 60px;
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 19px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .choice {
+    background: var(--card);
+    color: var(--ink);
+    border: 2px solid var(--line);
+  }
+  .choice:active { transform: scale(0.99); }
+  .choice.selected { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  .choice:focus-visible, .btn:focus-visible, input:focus-visible {
+    outline: 3px solid var(--navy);
+    outline-offset: 2px;
+  }
+  .btn {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: 2px solid var(--accent);
+    text-align: center;
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.ghost {
+    background: transparent;
+    color: var(--navy);
+    border-color: var(--line);
+  }
+  .row { display: grid; gap: 12px; margin-top: 18px; }
+
+  input[type="text"] {
+    width: 100%;
+    min-height: 60px;
+    padding: 14px 18px;
+    font: inherit;
+    font-size: 20px;
+    border: 2px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--ink);
+  }
+  input[type="text"]::placeholder { color: #a5a89f; }
+
+  .back {
+    background: none;
+    border: 0;
+    color: var(--muted);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 0 0;
+    cursor: pointer;
+  }
+  .back:disabled { visibility: hidden; }
+
+  /* Results */
+  .card {
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+  .card.hero {
+    border-color: var(--accent);
+    box-shadow: 0 6px 18px rgba(232, 100, 27, 0.15);
+  }
+  .tag {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .card.next .tag { color: var(--navy); }
+  .card h2 { margin: 0 0 10px; font-size: 22px; line-height: 1.2; }
+  .card p { margin: 0 0 10px; }
+  .card p:last-child { margin-bottom: 0; }
+  .card .cost { color: var(--muted); }
+  .card.good { border-color: var(--good); }
+  .card.good .tag { color: var(--good); }
+  .not {
+    border-left: 4px solid var(--navy);
+    padding: 4px 0 4px 14px;
+    margin: 22px 0;
+    color: var(--muted);
+  }
+  .not strong { color: var(--ink); display: block; margin-bottom: 4px; }
+  .fine { color: var(--muted); font-size: 15px; margin-top: 14px; text-align: center; }
+
+  ::selection { background: #ffd9c2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Shop <span>Check</span></div>
+    <div class="step" id="step" aria-live="polite"></div>
+  </header>
+  <div class="bar" aria-hidden="true"><div id="bar"></div></div>
+
+  <main id="app" aria-live="polite"></main>
+</div>
+
+<script>
+/* =====================================================================
+   EDIT THE WORDING HERE.
+   Everything the results screen says lives in this one object.
+
+   - "name"  : the module's title as it appears on screen.
+   - "what"  : 2-3 plain sentences on what it does. You can use {name}
+               (the business name) and {jobs} (the jobs-per-month answer).
+   - "cost"  : what it likely costs them today to not have it, one line
+               per jobs-per-month answer so it stays concrete.
+   The order of the keys below IS the priority order for "Start here".
+   ===================================================================== */
+const MODULES = {
+  missedCallTextBack: {
+    name: "Missed-Call Text-Back",
+    what: "When a call goes to voicemail, the caller gets a text back within seconds: \"Hey, it's {name}, I'm on a job right now. What can I help with?\" They reply, and you see it the next time you look at your phone. No app to learn, no extra phone to carry.",
+    cost: {
+      "1-5":  "At 1-5 jobs a month, one missed call can be a quarter of your month. Most people who hit voicemail don't leave a message. They just call the next name on the list.",
+      "5-15": "At 5-15 jobs a month you're probably missing a few calls a week. If just one of those a month would have booked, that's a whole job walking to a competitor.",
+      "15+":  "At 15+ jobs a month the phone rings more than anyone could answer. Missing a handful of calls a week likely means two or three lost jobs a month, every month."
+    }
+  },
+  quoteFollowUp: {
+    name: "Quote Follow-Up",
+    what: "Every quote you send gets a friendly nudge if it goes quiet. A short text after a few days, one more after a week. You set the words once. When the customer answers, it lands with you like any other text.",
+    cost: {
+      "1-5":  "With 1-5 jobs a month, every quote counts. Quotes rarely die because of price. They die because the customer got busy. Bringing back one quiet quote a month is a big chunk of your income.",
+      "5-15": "At 5-15 jobs a month you're likely sending twice that many quotes. If a third of them go quiet and a nudge rescues one or two, that's an extra job or two a month for no extra effort.",
+      "15+":  "At 15+ jobs a month you don't have time to chase quotes, so most quiet ones just die. Bringing back even one in ten is a couple of extra jobs a month."
+    }
+  },
+  reviewRequests: {
+    name: "Review Requests",
+    what: "When a job wraps up, the customer gets a text with a link straight to your Google reviews. Happy customers leave a review when it takes ten seconds and you ask at the right moment. This asks every time, so you don't have to remember.",
+    cost: {
+      "1-5":  "At 1-5 jobs a month, a handful of good reviews is the difference between showing up on Google and not. Right now every finished job is a review you're not getting.",
+      "5-15": "At 5-15 jobs a month you could be adding several reviews a month. Instead the only people writing reviews are the unhappy ones, and that's what new customers see first.",
+      "15+":  "At 15+ jobs a month you're leaving dozens of reviews on the table every year. The outfit with 80 reviews gets the call before the one with 8, even if you do better work."
+    }
+  },
+  onePageSite: {
+    name: "One-Page Site",
+    what: "One clean page: what you do, where you work, your phone number, a few photos of your work, and your reviews. It loads fast on a phone and the number is one tap to call. No blog, no fluff.",
+    cost: {
+      "1-5":  "At 1-5 jobs a month, most customers Google you before they call, even the referrals. With nothing to find, some of them figure you've closed up and move on.",
+      "5-15": "At 5-15 jobs a month your name is coming up in Google regularly. When there's nothing to tap on, you're handing those searches to whoever does have a page.",
+      "15+":  "At 15+ jobs a month you've got the reputation but nowhere online to prove it. You're winning on word of mouth alone and losing everyone who can't find you."
+    }
+  }
+};
+
+/* Shown when none of the rules fire. */
+const ALL_GOOD = {
+  name: "You're in good shape",
+  what: "You pick up the phone, you chase quiet quotes, you ask for reviews, and people can find you online. That's most of the battle. Nothing here is falling through the cracks that we can see."
+};
+
+/* The line that goes at the bottom of every results screen. */
+const NOT_LINE = "This doesn't replace you or anyone who works for you. It handles the stuff that falls through the cracks when you're busy.";
+
+/* ---------------------------------------------------------------------
+   Questions. "key" is what ends up in config.json.
+   --------------------------------------------------------------------- */
+const QUESTIONS = [
+  { key: "businessName", type: "text", title: "What's the name of your business?", lead: "Eight quick questions. Takes about a minute. Nothing leaves your phone.", placeholder: "e.g. Cowie Plumbing" },
+  { key: "trade", title: "What do you do?", options: ["Renovation", "Plumbing", "Electrical", "HVAC", "Landscaping", "Other"] },
+  { key: "phone", title: "Who answers the phone when you're on a job?", options: ["Me, when I can", "Someone in the office", "Nobody, it goes to voicemail", "I don't know"] },
+  { key: "quotes", title: "How do you send quotes?", options: ["Text", "Email", "Paper", "Verbally"] },
+  { key: "followUp", title: "Do you follow up on quotes that go quiet?", options: ["Always", "Sometimes", "Never"] },
+  { key: "reviews", title: "Do you ask customers for Google reviews?", options: ["Every job", "Sometimes", "Never"] },
+  { key: "website", title: "Do you have a website?", options: ["Yes, and I update it", "Yes, but it's old", "No"] },
+  { key: "jobsPerMonth", title: "Roughly how many jobs a month?", options: ["1-5", "5-15", "15+"] }
+];
+
+/* ---------------------------------------------------------------------
+   The rules. Each module is switched on by one answer.
+   Priority order for "Start here" = the order of keys in MODULES above.
+   --------------------------------------------------------------------- */
+const RULES = {
+  missedCallTextBack: a => a.phone === "Nobody, it goes to voicemail" || a.phone === "I don't know",
+  quoteFollowUp:      a => a.followUp === "Never",
+  reviewRequests:     a => a.reviews === "Never",
+  onePageSite:        a => a.website === "No"
+};
+
+const MAX_NEXT = 2;
+
+/* ===================== No need to edit below here ===================== */
+
+const app = document.getElementById("app");
+const stepEl = document.getElementById("step");
+const barEl = document.getElementById("bar");
+const answers = {};
+let index = 0;
+
+function evaluate(a) {
+  const enabled = {};
+  for (const key of Object.keys(MODULES)) enabled[key] = !!RULES[key](a);
+  const matched = Object.keys(MODULES).filter(k => enabled[k]);
+  return {
+    enabled,
+    startHere: matched[0] || null,
+    next: matched.slice(1, 1 + MAX_NEXT)
+  };
+}
+
+function fill(text, a) {
+  return text.replace(/\{name\}/g, a.businessName || "us").replace(/\{jobs\}/g, a.jobsPerMonth || "");
+}
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  (children || []).forEach(c => node.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+  return node;
+}
+
+function setProgress(i, total) {
+  stepEl.textContent = i < total ? `${i + 1} of ${total}` : "Done";
+  barEl.style.width = `${Math.round(((i) / total) * 100)}%`;
+}
+
+function render() {
+  app.innerHTML = "";
+  if (index >= QUESTIONS.length) return renderResults();
+  setProgress(index, QUESTIONS.length);
+
+  const q = QUESTIONS[index];
+  const screen = el("section", { class: "screen active" });
+  screen.appendChild(el("h1", { text: q.title }));
+  if (q.lead) screen.appendChild(el("p", { class: "lead", text: q.lead }));
+
+  if (q.type === "text") {
+    const input = el("input", {
+      type: "text", placeholder: q.placeholder || "", autocomplete: "organization",
+      "aria-label": q.title, maxlength: "80", value: answers[q.key] || ""
+    });
+    const nextBtn = el("button", { class: "btn", text: "Next", disabled: "" });
+    const sync = () => { if (input.value.trim()) nextBtn.removeAttribute("disabled"); else nextBtn.setAttribute("disabled", ""); };
+    const go = () => { if (!input.value.trim()) return; answers[q.key] = input.value.trim(); index++; render(); };
+    input.addEventListener("input", sync);
+    input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+    nextBtn.addEventListener("click", go);
+    sync();
+    screen.appendChild(input);
+    screen.appendChild(el("div", { class: "row" }, [nextBtn]));
+    setTimeout(() => input.focus(), 50);
+  } else {
+    const list = el("div", { class: "choices", role: "group", "aria-label": q.title });
+    q.options.forEach(opt => {
+      const b = el("button", { class: "choice" + (answers[q.key] === opt ? " selected" : ""), text: opt, type: "button" });
+      b.addEventListener("click", () => { answers[q.key] = opt; index++; render(); });
+      list.appendChild(b);
+    });
+    screen.appendChild(list);
+  }
+
+  const back = el("button", { class: "back", text: "← Back", type: "button" });
+  if (index === 0) back.setAttribute("disabled", "");
+  back.addEventListener("click", () => { index = Math.max(0, index - 1); render(); });
+  screen.appendChild(back);
+
+  app.appendChild(screen);
+  window.scrollTo(0, 0);
+}
+
+function moduleCard(key, tagText, cls) {
+  const m = MODULES[key];
+  const jobs = answers.jobsPerMonth;
+  const cost = (m.cost && m.cost[jobs]) || "";
+  return el("article", { class: "card " + cls }, [
+    el("div", { class: "tag", text: tagText }),
+    el("h2", { text: m.name }),
+    el("p", { text: fill(m.what, answers) }),
+    cost ? el("p", { class: "cost", text: fill(cost, answers) }) : el("span")
+  ]);
+}
+
+function renderResults() {
+  setProgress(QUESTIONS.length, QUESTIONS.length);
+  const result = evaluate(answers);
+  const screen = el("section", { class: "screen active" });
+
+  screen.appendChild(el("h1", { text: `Here's the plan for ${answers.businessName}` }));
+  screen.appendChild(el("p", { class: "lead", text: result.startHere
+    ? "One thing to start with. Get that working, then look at the rest."
+    : "Nothing urgent. Here's what we saw." }));
+
+  if (result.startHere) {
+    screen.appendChild(moduleCard(result.startHere, "Start here", "hero"));
+    result.next.forEach((key, i) => screen.appendChild(moduleCard(key, i === 0 ? "Next" : "After that", "next")));
+  } else {
+    screen.appendChild(el("article", { class: "card good" }, [
+      el("div", { class: "tag", text: "Good news" }),
+      el("h2", { text: ALL_GOOD.name }),
+      el("p", { text: fill(ALL_GOOD.what, answers) })
+    ]));
+  }
+
+  screen.appendChild(el("div", { class: "not" }, [
+    el("strong", { text: "What this is NOT" }),
+    NOT_LINE
+  ]));
+
+  const dl = el("button", { class: "btn", text: "Download config.json", type: "button" });
+  dl.addEventListener("click", () => downloadConfig(result));
+  const again = el("button", { class: "btn ghost", text: "Start over", type: "button" });
+  again.addEventListener("click", () => { for (const k in answers) delete answers[k]; index = 0; render(); });
+  const back = el("button", { class: "back", text: "← Back", type: "button" });
+  back.addEventListener("click", () => { index = QUESTIONS.length - 1; render(); });
+
+  screen.appendChild(el("div", { class: "row" }, [dl, again]));
+  screen.appendChild(el("p", { class: "fine", text: "Your answers stay on this device. Nothing is sent anywhere." }));
+  screen.appendChild(back);
+  app.appendChild(screen);
+  window.scrollTo(0, 0);
+}
+
+function buildConfig(result) {
+  return {
+    app: "Shop Check",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    answers: Object.fromEntries(QUESTIONS.map(q => [q.key, answers[q.key] ?? null])),
+    modules: result.enabled,
+    startHere: result.startHere,
+    next: result.next
+  };
+}
+
+function downloadConfig(result) {
+  const json = JSON.stringify(buildConfig(result), null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: "config.json" });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* Exposed for testing in the console: ShopCheck.evaluate({...answers}) */
+window.ShopCheck = { evaluate, buildConfig, MODULES, QUESTIONS, RULES };
+
+render();
+</script>
+</body>
+</html>
