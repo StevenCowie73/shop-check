@@ -5,196 +5,256 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>Shop Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* ---- Design tokens (from the Claude Design build spec) ---- */
   :root {
-    --bg: #f4f1ea;
-    --card: #ffffff;
-    --ink: #1d2126;
-    --muted: #5d6570;
-    --line: #d9d3c6;
-    --accent: #e8641b;
-    --accent-ink: #ffffff;
-    --navy: #16324f;
-    --good: #2e7d4f;
-    --radius: 14px;
+    /* color */
+    --ground: #F4EFE6;
+    --surface: #FBF8F2;
+    --callout: #F3E7D3;
+    --ink: #1C1917;
+    --body-muted: #3D3833;
+    --muted: #5C5650;
+    --line: #CFC6B6;
+    --track: #D9D1C3;
+    --accent: #C4501B;
+    --accent-hover: #A94314;
+    --accent-dark: #8F3810;
+    --on-accent: #FFF7EE;
+    --hover-fill: #EFE7D9;
+    --pressed-fill: #E6DCC9;
+    --dashed: #8A827A;
+    --placeholder: #8A827A;
+    --disabled-opacity: 0.45;
+
+    /* type */
+    --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --fs-display: 44px;   --fw-display: 700;   /* app name, desktop headline */
+    --fs-result: 34px;    --fw-result: 700;    /* result name */
+    --fs-question: 30px;  --fw-question: 700;
+    --fs-tagline: 22px;   --fw-tagline: 500;
+    --fs-title: 20px;     --fw-title: 700;     /* card title, buttons */
+    --fs-answer: 19px;    --fw-answer: 600;
+    --fs-body: 17px;      --fw-body: 400;      /* card body */
+    --fs-quiet-body: 15px;                     /* body inside quiet cards (artboard) */
+    --fs-label: 16px;     --fw-label: 600;     /* labels, links, callout */
+    --fs-kicker-lg: 18px;                      /* "Start here:" (artboard) */
+    --fs-fine: 14px;      --fw-fine: 400;
+    --fs-bottom-link: 15px;
+    --fs-kicker: 13px;    --fw-kicker: 700;
+    --tight: -0.02em;
+
+    /* spacing */
+    --pad-x: 24px;
+    --pad-y: 28px;
+    --gap-question: 28px;
+    --gap-block: 24px;
+    --pad-card: 20px;
+    --pad-quiet: 16px;
+    --gap-stack: 12px;
+    --gap-label: 8px;
+    --max-desktop: 1040px;
+
+    /* shape */
+    --radius: 8px;
+    --radius-callout: 6px;
+    --radius-bar: 2px;
+    --border-strong: 2px;
+    --border-quiet: 1px;
+
+    /* controls */
+    --h-primary: 60px;
+    --h-secondary: 56px;
+    --h-input: 60px;
+    --ring: 26px;
+    --bar-h: 4px;
+    --rule-w: 40px;
+    --rule-h: 6px;
   }
+
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    font: 18px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
+    font-family: var(--font);
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    background: var(--ground);
     color: var(--ink);
+    -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%;
-    min-height: 100dvh;
   }
+  h1, h2, h3, p, pre { margin: 0; }
+  button, input, a { font-family: inherit; }
+  :focus { outline: none; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  ::selection { background: var(--callout); }
+
+  /* ---- Screen frame ---- */
   .wrap {
-    max-width: 520px;
-    margin: 0 auto;
-    padding: 16px 16px 40px;
-  }
-  header {
+    min-height: 100dvh;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 0 16px;
+    flex-direction: column;
+    padding: var(--pad-y) var(--pad-x);
+    max-width: 480px;
+    margin: 0 auto;
   }
-  .brand {
-    font-weight: 800;
-    font-size: 20px;
-    letter-spacing: 0.2px;
-    color: var(--navy);
+  .screen { display: flex; flex-direction: column; gap: var(--gap-block); flex: 1; }
+  .centered { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: var(--gap-question); }
+  .fine {
+    font-size: var(--fs-fine); font-weight: var(--fw-fine);
+    color: var(--muted); text-align: center; line-height: 1.45; text-wrap: pretty;
   }
-  .brand span { color: var(--accent); }
-  .step { color: var(--muted); font-size: 15px; font-weight: 600; }
-  .bar {
-    height: 6px;
-    background: var(--line);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 24px;
-  }
-  .bar > div {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width 220ms ease;
-  }
-  .screen { display: none; }
-  .screen.active { display: block; animation: rise 200ms ease; }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .fine.bottom { margin-top: auto; padding-top: var(--gap-block); }
+  .rule { width: var(--rule-w); height: var(--rule-h); background: var(--accent); border-radius: var(--radius-bar); }
 
-  h1 {
-    font-size: 26px;
-    line-height: 1.2;
-    margin: 0 0 8px;
-    font-weight: 800;
+  /* ---- Type ---- */
+  .display { font-size: var(--fs-display); font-weight: var(--fw-display); line-height: 1.05; letter-spacing: var(--tight); }
+  .tagline { font-size: var(--fs-tagline); font-weight: var(--fw-tagline); line-height: 1.35; text-wrap: pretty; }
+  .question { font-size: var(--fs-question); font-weight: var(--fw-question); line-height: 1.15; letter-spacing: -0.015em; text-wrap: pretty; }
+  .result-name { font-size: var(--fs-result); font-weight: var(--fw-result); line-height: 1.1; letter-spacing: var(--tight); text-wrap: pretty; }
+  .kicker-lg { font-size: var(--fs-kicker-lg); font-weight: var(--fw-label); color: var(--muted); }
+  .kicker {
+    font-size: var(--fs-kicker); font-weight: var(--fw-kicker);
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
   }
-  .lead { color: var(--muted); margin: 0 0 22px; }
+  .label { font-size: var(--fs-label); font-weight: var(--fw-label); display: block; margin-bottom: var(--gap-label); }
+  .stack { display: flex; flex-direction: column; gap: var(--gap-label); }
 
-  .choices { display: grid; gap: 12px; }
-  .choice, .btn {
-    appearance: none;
-    width: 100%;
-    min-height: 60px;
-    padding: 14px 18px;
-    border-radius: var(--radius);
-    font: inherit;
-    font-size: 19px;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
+  /* ---- Controls ---- */
+  .btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: var(--h-primary); padding: 0 16px;
+    border: 0; border-radius: var(--radius);
+    background: var(--accent); color: var(--on-accent);
+    font-size: var(--fs-title); font-weight: var(--fw-title);
+    text-decoration: none; cursor: pointer; text-align: center; line-height: 1.2;
     touch-action: manipulation;
   }
-  .choice {
-    background: var(--card);
-    color: var(--ink);
-    border: 2px solid var(--line);
+  .btn:hover { background: var(--accent-hover); }
+  .btn:active { background: var(--accent-dark); }
+  .btn:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; background: var(--accent); }
+  .btn.secondary {
+    height: var(--h-secondary);
+    background: transparent; color: var(--ink);
+    border: var(--border-strong) solid var(--ink);
   }
-  .choice:active { transform: scale(0.99); }
-  .choice.selected { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
-  .choice:focus-visible, .btn:focus-visible, input:focus-visible {
-    outline: 3px solid var(--navy);
-    outline-offset: 2px;
-  }
-  .btn {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border: 2px solid var(--accent);
-    text-align: center;
-  }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn.ghost {
-    background: transparent;
-    color: var(--navy);
-    border-color: var(--line);
-  }
-  .row { display: grid; gap: 12px; margin-top: 18px; }
+  .btn.secondary:hover { background: var(--hover-fill); }
+  .btn.secondary:active { background: var(--pressed-fill); }
 
   input[type="text"] {
-    width: 100%;
-    min-height: 60px;
-    padding: 14px 18px;
-    font: inherit;
-    font-size: 20px;
-    border: 2px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--card);
-    color: var(--ink);
+    width: 100%; height: var(--h-input); padding: 0 16px;
+    border: var(--border-strong) solid var(--ink); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink); font-size: 20px;
   }
-  input[type="text"]::placeholder { color: #a5a89f; }
+  input[type="text"]::placeholder { color: var(--placeholder); }
 
-  .back {
-    background: none;
-    border: 0;
-    color: var(--muted);
-    font: inherit;
-    font-size: 16px;
-    font-weight: 600;
-    padding: 12px 0 0;
-    cursor: pointer;
+  .choices { display: flex; flex-direction: column; gap: var(--gap-stack); }
+  .choice {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; min-height: var(--h-primary); padding: 14px 18px;
+    border: var(--border-strong) solid var(--line); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink);
+    font-size: var(--fs-answer); font-weight: var(--fw-answer); text-align: left; line-height: 1.25;
+    cursor: pointer; touch-action: manipulation;
   }
-  .back:disabled { visibility: hidden; }
+  .choice:hover { background: var(--hover-fill); }
+  .choice:active { background: var(--pressed-fill); }
+  .choice .ring {
+    width: var(--ring); height: var(--ring); flex: none; border-radius: 50%;
+    border: var(--border-strong) solid var(--line); background: transparent;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .choice .ring svg { width: 14px; height: 14px; display: none; }
+  .choice.selected { border-color: var(--ink); }
+  .choice.selected .ring { border-color: var(--accent); background: var(--accent); }
+  .choice.selected .ring svg { display: block; }
 
-  /* Results */
+  a.link, button.link {
+    display: inline-block; background: none; border: 0; cursor: pointer;
+    color: var(--ink); font-size: var(--fs-label); font-weight: var(--fw-label);
+    text-decoration: underline; text-underline-offset: 3px; padding: 8px 0;
+  }
+  a.link:hover, button.link:hover { color: var(--accent); }
+  .link.quiet { color: var(--muted); font-size: var(--fs-bottom-link); }
+  .bottom-links { display: flex; justify-content: center; gap: 28px; padding-top: 8px; }
+  .bottom-links.start .link { visibility: hidden; }
+
+  /* ---- Progress ---- */
+  .progress { display: flex; flex-direction: column; gap: 10px; }
+  .progress-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .progress-row .count { font-size: var(--fs-label); font-weight: var(--fw-label); color: var(--muted); }
+  .bar { height: var(--bar-h); background: var(--track); border-radius: var(--radius-bar); overflow: hidden; }
+  .bar > div { height: 100%; background: var(--ink); border-radius: var(--radius-bar); transition: width 200ms ease; }
+
+  /* ---- Results ---- */
+  .hero { display: flex; flex-direction: column; gap: 8px; }
   .card {
-    background: var(--card);
-    border: 2px solid var(--line);
-    border-radius: var(--radius);
-    padding: 18px;
-    margin-bottom: 14px;
+    background: var(--surface); border-radius: var(--radius);
+    display: flex; flex-direction: column;
   }
-  .card.hero {
-    border-color: var(--accent);
-    box-shadow: 0 6px 18px rgba(232, 100, 27, 0.15);
+  .card.main { border: var(--border-strong) solid var(--ink); padding: var(--pad-card); gap: 16px; }
+  .card.main .body { font-size: var(--fs-body); font-weight: var(--fw-body); line-height: 1.5; text-wrap: pretty; }
+  .callout {
+    background: var(--callout); border-radius: var(--radius-callout);
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
   }
-  .tag {
-    display: inline-block;
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 6px;
-  }
-  .card.next .tag { color: var(--navy); }
-  .card h2 { margin: 0 0 10px; font-size: 22px; line-height: 1.2; }
-  .card p { margin: 0 0 10px; }
-  .card p:last-child { margin-bottom: 0; }
-  .card .cost { color: var(--muted); }
-  .card.good { border-color: var(--good); }
-  .card.good .tag { color: var(--good); }
+  .callout .kicker { color: var(--accent-dark); }
+  .callout .cost { font-size: var(--fs-label); font-weight: var(--fw-label); line-height: 1.4; }
+  .quiet-list { display: flex; flex-direction: column; gap: var(--gap-stack); }
+  .card.quiet { border: var(--border-quiet) solid var(--line); padding: var(--pad-quiet) 18px; gap: 8px; }
+  .card.quiet h2 { font-size: var(--fs-title); font-weight: var(--fw-title); line-height: 1.2; }
+  .card.quiet .body { font-size: var(--fs-quiet-body); line-height: 1.45; color: var(--body-muted); text-wrap: pretty; }
+  .card.quiet .cost { font-size: var(--fs-fine); color: var(--muted); line-height: 1.45; }
+  .card.quiet .cost strong { font-weight: 700; }
   .not {
-    border-left: 4px solid var(--navy);
-    padding: 4px 0 4px 14px;
-    margin: 22px 0;
-    color: var(--muted);
+    border: var(--border-strong) dashed var(--dashed); border-radius: var(--radius);
+    padding: 16px 18px; font-size: var(--fs-label); font-weight: 500; line-height: 1.5; text-wrap: pretty;
   }
-  .not strong { color: var(--ink); display: block; margin-bottom: 4px; }
-  .fine { color: var(--muted); font-size: 15px; margin-top: 14px; text-align: center; }
-  .btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
-  .center { text-align: center; margin: 14px 0 0; }
-  .alt { color: var(--navy); font-weight: 600; font-size: 16px; }
-  .links { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
-  .msgbox { background: var(--card); border: 2px solid var(--line); border-radius: var(--radius); padding: 16px; margin-top: 18px; }
-  .msg { font: inherit; white-space: pre-wrap; word-break: break-word; margin: 0 0 14px; }
-  .msgbox .row { margin-top: 0; }
-  .phone { text-align: center; margin-top: 22px; }
-  .phone-label { color: var(--muted); font-weight: 600; font-size: 15px; }
-  .phone-number { font-size: 32px; font-weight: 800; color: var(--navy); letter-spacing: 0.5px; user-select: all; }
+  .contact { display: flex; flex-direction: column; gap: var(--gap-stack); align-items: center; }
+  .contact .btn { align-self: stretch; }
+  .contact-head { display: none; font-size: var(--fs-tagline); font-weight: 700; line-height: 1.2; align-self: flex-start; }
+  .msgbox {
+    align-self: stretch;
+    background: var(--surface); border: var(--border-strong) solid var(--ink); border-radius: var(--radius);
+    padding: var(--pad-card); display: flex; flex-direction: column; gap: 14px;
+  }
+  .msg { font-family: inherit; font-size: var(--fs-label); line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--ink); }
+  .phone { align-self: stretch; display: flex; flex-direction: column; gap: 6px; text-align: center; }
+  .phone-label { font-size: var(--fs-label); font-weight: var(--fw-label); color: var(--muted); }
+  .phone-number { font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: var(--tight); color: var(--accent); line-height: 1.1; user-select: all; }
+  .left { display: flex; flex-direction: column; gap: var(--gap-block); }
+  .screen:has(.good) { justify-content: center; }
+  .good { display: flex; flex-direction: column; gap: var(--gap-block); }
+  .good .body { font-size: var(--fs-body); line-height: 1.5; text-wrap: pretty; }
+  .good .contact { padding-top: 8px; }
 
-  ::selection { background: #ffd9c2; }
+  /* ---- Desktop results: two columns ---- */
+  @media (min-width: 900px) {
+    .wrap.wide { max-width: var(--max-desktop); padding: 56px 40px 64px; }
+    .wrap.wide .screen { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+    .wrap.wide .left { display: flex; flex-direction: column; gap: var(--gap-block); }
+    .wrap.wide .right { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 24px; }
+    .wrap.wide .result-name { font-size: var(--fs-display); line-height: 1.05; }
+    .wrap.wide .card.main { padding: 24px; }
+    .wrap.wide .card.main .body { font-size: 18px; }
+    .wrap.wide .quiet-list { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-stack); }
+    .wrap.wide .quiet-list.single { grid-template-columns: 1fr; }
+    .wrap.wide .bottom-links { grid-column: 1; justify-content: flex-start; padding-top: 0; }
+    .wrap.wide .contact { align-items: flex-start; }
+    .wrap.wide .contact-head { display: block; }
+    .wrap.wide .contact .fine { text-align: left; }
+    .wrap.wide .phone { text-align: left; }
+    .wrap.wide .good { justify-content: flex-start; }
+    .wrap.wide .good .result-name { font-size: var(--fs-display); }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="brand">Shop <span>Check</span></div>
-    <div class="step" id="step" aria-live="polite"></div>
-  </header>
-  <div class="bar" aria-hidden="true"><div id="bar"></div></div>
-
-  <main id="app" aria-live="polite"></main>
+<div class="wrap" id="wrap">
+  <main id="app" aria-live="polite" class="screen"></main>
 </div>
 
 <script>
@@ -349,8 +409,7 @@ const MAX_NEXT = 2;
 /* ===================== No need to edit below here ===================== */
 
 const app = document.getElementById("app");
-const stepEl = document.getElementById("step");
-const barEl = document.getElementById("bar");
+const wrap = document.getElementById("wrap");
 const answers = {};
 let index = 0;
 
@@ -385,66 +444,126 @@ function el(tag, attrs, children) {
   return node;
 }
 
-function setProgress(i, total) {
-  stepEl.textContent = i < total ? `${i + 1} of ${total}` : "Done";
-  barEl.style.width = `${Math.round(((i) / total) * 100)}%`;
+function check() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M3 8.5l3.2 3.2L13 5");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "#FFF7EE");
+  path.setAttribute("stroke-width", "2.4");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+  return svg;
 }
+
+function link(text, onClick, quiet) {
+  const b = el("button", { class: "link" + (quiet ? " quiet" : ""), text, type: "button" });
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function goBack() { index = Math.max(0, index - 1); render(); }
+function startOver() { for (const k in answers) delete answers[k]; index = 0; render(); }
 
 function render() {
   app.innerHTML = "";
+  wrap.classList.remove("wide");
   if (index >= QUESTIONS.length) return renderResults();
-  setProgress(index, QUESTIONS.length);
-
   const q = QUESTIONS[index];
-  const screen = el("section", { class: "screen active" });
-  screen.appendChild(el("h1", { text: q.title }));
-  if (q.lead) screen.appendChild(el("p", { class: "lead", text: q.lead }));
+  if (q.type === "text") return renderStart(q);
 
-  if (q.type === "text") {
-    const input = el("input", {
-      type: "text", placeholder: q.placeholder || "", autocomplete: "organization",
-      "aria-label": q.title, maxlength: "80", value: answers[q.key] || ""
-    });
-    const nextBtn = el("button", { class: "btn", text: "Next", disabled: "" });
-    const sync = () => { if (input.value.trim()) nextBtn.removeAttribute("disabled"); else nextBtn.setAttribute("disabled", ""); };
-    const go = () => { if (!input.value.trim()) return; answers[q.key] = input.value.trim(); index++; render(); };
-    input.addEventListener("input", sync);
-    input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
-    nextBtn.addEventListener("click", go);
-    sync();
-    screen.appendChild(input);
-    screen.appendChild(el("div", { class: "row" }, [nextBtn]));
-    setTimeout(() => input.focus(), 50);
-  } else {
-    const list = el("div", { class: "choices", role: "group", "aria-label": q.title });
-    q.options.forEach(opt => {
-      const b = el("button", { class: "choice" + (answers[q.key] === opt ? " selected" : ""), text: opt, type: "button" });
-      b.addEventListener("click", () => { answers[q.key] = opt; index++; render(); });
-      list.appendChild(b);
-    });
-    screen.appendChild(list);
-  }
+  /* Question screen */
+  const total = QUESTIONS.length;
+  const progress = el("div", { class: "progress" }, [
+    el("div", { class: "progress-row" }, [
+      link("Back", goBack),
+      el("div", { class: "count", "aria-live": "polite", text: `${index + 1} of ${total}` })
+    ]),
+    el("div", { class: "bar", "aria-hidden": "true" }, [ el("div", { style: `width:${((index + 1) / total) * 100}%` }) ])
+  ]);
+  app.appendChild(progress);
 
-  const back = el("button", { class: "back", text: "← Back", type: "button" });
-  if (index === 0) back.setAttribute("disabled", "");
-  back.addEventListener("click", () => { index = Math.max(0, index - 1); render(); });
-  screen.appendChild(back);
-
-  app.appendChild(screen);
+  const block = el("div", { class: "centered", style: "flex:0;justify-content:flex-start" });
+  block.appendChild(el("h1", { class: "question", text: q.title }));
+  const list = el("div", { class: "choices", role: "group", "aria-label": q.title });
+  q.options.forEach(opt => {
+    const selected = answers[q.key] === opt;
+    const b = el("button", { class: "choice" + (selected ? " selected" : ""), type: "button", "aria-pressed": selected ? "true" : "false" }, [
+      el("span", { text: opt }),
+      el("span", { class: "ring" }, [check()])
+    ]);
+    b.addEventListener("click", () => { answers[q.key] = opt; index++; render(); });
+    list.appendChild(b);
+  });
+  block.appendChild(list);
+  app.appendChild(block);
+  app.appendChild(el("p", { class: "fine bottom", text: "Tap an answer to keep going." }));
   window.scrollTo(0, 0);
 }
 
-function moduleCard(key, tagText, cls, strength) {
+function renderStart(q) {
+  const input = el("input", {
+    type: "text", id: "biz", placeholder: q.placeholder || "", autocomplete: "organization",
+    maxlength: "80", value: answers[q.key] || ""
+  });
+  const go = el("button", { class: "btn", text: "Let's go", type: "button", disabled: "" });
+  const sync = () => { if (input.value.trim()) go.removeAttribute("disabled"); else go.setAttribute("disabled", ""); };
+  const submit = () => { if (!input.value.trim()) return; answers[q.key] = input.value.trim(); index++; render(); };
+  input.addEventListener("input", sync);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+  go.addEventListener("click", submit);
+  sync();
+
+  const centered = el("div", { class: "centered" }, [
+    el("div", { class: "stack", style: "gap:14px" }, [
+      el("div", { class: "rule", "aria-hidden": "true" }),
+      el("h1", { class: "display", text: "Shop Check" }),
+      el("p", { class: "tagline", text: "Answer 8 quick questions. Get one clear thing to fix first." })
+    ]),
+    el("div", { class: "stack", style: "gap:10px" }, [
+      el("label", { class: "label", for: "biz", text: "Your business name", style: "margin:0" }),
+      input
+    ]),
+    go
+  ]);
+  app.appendChild(centered);
+  app.appendChild(el("p", { class: "fine bottom", text: "No cost. No account. Takes about a minute. Nothing leaves your phone." }));
+  window.scrollTo(0, 0);
+}
+
+function costFor(key, strength) {
   const m = MODULES[key];
   const jobs = answers.jobsPerMonth;
   const table = (strength === "weak" && m.weakCost) ? m.weakCost : m.cost;
-  const cost = (table && table[jobs]) || "";
-  return el("article", { class: "card " + cls }, [
-    el("div", { class: "tag", text: tagText }),
-    el("h2", { text: m.name }),
-    el("p", { text: fill(m.what, answers) }),
-    cost ? el("p", { class: "cost", text: fill(cost, answers) }) : el("span")
+  return (table && table[jobs]) ? fill(table[jobs], answers) : "";
+}
+
+function mainCard(key, strength) {
+  const m = MODULES[key];
+  const cost = costFor(key, strength);
+  const card = el("article", { class: "card main" }, [
+    el("p", { class: "body", text: fill(m.what, answers) })
   ]);
+  if (cost) card.appendChild(el("div", { class: "callout" }, [
+    el("div", { class: "kicker", text: "What it's costing you now" }),
+    el("div", { class: "cost", text: cost })
+  ]));
+  return card;
+}
+
+function quietCard(key, tagText, strength) {
+  const m = MODULES[key];
+  const cost = costFor(key, strength);
+  const card = el("article", { class: "card quiet" }, [
+    el("div", { class: "kicker tag", text: tagText }),
+    el("h2", { text: m.name }),
+    el("p", { class: "body", text: fill(m.what, answers) })
+  ]);
+  if (cost) card.appendChild(el("p", { class: "cost" }, [ el("strong", { text: "Costing you now: " }), cost ]));
+  return card;
 }
 
 /* The text that gets pre-filled into the SMS / email. Kept short on
@@ -503,72 +622,82 @@ function isDev() {
   return new URLSearchParams(location.search).get("dev") === "1";
 }
 
-function renderResults() {
-  setProgress(QUESTIONS.length, QUESTIONS.length);
-  const result = evaluate(answers);
-  const screen = el("section", { class: "screen active" });
-
-  screen.appendChild(el("h1", { text: `Here's the plan for ${answers.businessName}` }));
-  screen.appendChild(el("p", { class: "lead", text: result.startHere
-    ? "One thing to start with. Get that working, then look at the rest."
-    : "Nothing urgent. Here's what we saw." }));
-
-  if (result.startHere) {
-    screen.appendChild(moduleCard(result.startHere, "Start here", "hero", result.strength[result.startHere]));
-    result.next.forEach((key, i) => screen.appendChild(moduleCard(key, i === 0 ? "Next" : "After that", "next", result.strength[key])));
-  } else {
-    screen.appendChild(el("article", { class: "card good" }, [
-      el("div", { class: "tag", text: "Good news" }),
-      el("h2", { text: ALL_GOOD.name }),
-      el("p", { text: fill(ALL_GOOD.what, answers) })
-    ]));
-  }
-
-  screen.appendChild(el("div", { class: "not" }, [
-    el("strong", { text: "What this is NOT" }),
-    NOT_LINE
-  ]));
-
+/* The contact block. Same logic as before: phones get the sms: button,
+   desktops get the message to copy plus the number written out. */
+function contactBlock(result) {
   const message = buildMessage(result);
-  const mail = el("a", { class: "alt", href: mailLink(CONTACT.email, CONTACT_COPY.subject, message), text: CONTACT_COPY.emailLink });
+  const box = el("div", { class: "contact" });
+  box.appendChild(el("h2", { class: "contact-head", text: "Want this set up?" }));
 
   if (isMobile()) {
-    const text = el("a", { class: "btn", href: smsLink(CONTACT.phone, message), text: CONTACT_COPY.button });
-    screen.appendChild(el("div", { class: "row" }, [text]));
-    screen.appendChild(el("p", { class: "center" }, [mail]));
+    const mail = el("a", { class: "link alt", href: mailLink(CONTACT.email, CONTACT_COPY.subject, message), text: CONTACT_COPY.emailLink });
+    box.appendChild(el("a", { class: "btn", href: smsLink(CONTACT.phone, message), text: CONTACT_COPY.button }));
+    box.appendChild(mail);
   } else {
-    /* Desktop: no sms: link. Show the message to copy, the number big, and email. */
-    const copyBtn = el("button", { class: "btn", text: CONTACT_COPY.copy, type: "button" });
+    const copyBtn = el("button", { class: "btn secondary", text: CONTACT_COPY.copy, type: "button" });
     copyBtn.addEventListener("click", async () => {
       const ok = await copyText(message);
       copyBtn.textContent = ok ? CONTACT_COPY.copied : CONTACT_COPY.copy;
       setTimeout(() => { copyBtn.textContent = CONTACT_COPY.copy; }, 2000);
     });
-    screen.appendChild(el("div", { class: "msgbox" }, [
+    box.appendChild(el("div", { class: "msgbox" }, [
+      el("div", { class: "kicker", text: "The message the button would send" }),
       el("pre", { class: "msg", text: message }),
-      el("div", { class: "row" }, [copyBtn])
+      copyBtn
     ]));
-    screen.appendChild(el("div", { class: "phone" }, [
+    box.appendChild(el("div", { class: "phone" }, [
       el("div", { class: "phone-label", text: CONTACT_COPY.callLabel }),
       el("div", { class: "phone-number", text: CONTACT.phone })
     ]));
-    screen.appendChild(el("p", { class: "center" }, [mail]));
+    box.appendChild(el("a", { class: "link alt", href: mailLink(CONTACT.email, CONTACT_COPY.subject, message), text: `${CONTACT_COPY.emailLink}: ${CONTACT.email}` }));
   }
-  screen.appendChild(el("p", { class: "fine", text: CONTACT_COPY.reassure }));
+  box.appendChild(el("p", { class: "fine", text: CONTACT_COPY.reassure }));
 
   if (isDev()) {
-    const dl = el("button", { class: "btn ghost", text: "Download config.json", type: "button" });
+    const dl = el("button", { class: "btn secondary", text: "Download config.json", type: "button" });
     dl.addEventListener("click", () => downloadConfig(result));
-    screen.appendChild(el("div", { class: "row" }, [dl]));
+    box.appendChild(dl);
+  }
+  return box;
+}
+
+function bottomLinks() {
+  const back = link("Back", () => { index = QUESTIONS.length - 1; render(); }, true);
+  const again = link("Start over", startOver, true);
+  return el("div", { class: "bottom-links" }, [back, again]);
+}
+
+function renderResults() {
+  wrap.classList.add("wide");
+  const result = evaluate(answers);
+  const left = el("div", { class: "left" });
+  const right = el("div", { class: "right" });
+
+  if (result.startHere) {
+    left.appendChild(el("div", { class: "hero" }, [
+      el("div", { class: "kicker-lg", text: "Start here:" }),
+      el("h1", { class: "result-name", text: MODULES[result.startHere].name })
+    ]));
+    left.appendChild(mainCard(result.startHere, result.strength[result.startHere]));
+    if (result.next.length) {
+      const list = el("div", { class: "quiet-list" + (result.next.length === 1 ? " single" : "") });
+      result.next.forEach((key, i) => list.appendChild(quietCard(key, i === 0 ? "Next" : "After that", result.strength[key])));
+      left.appendChild(list);
+    }
+    left.appendChild(el("div", { class: "not", text: NOT_LINE }));
+  } else {
+    left.appendChild(el("div", { class: "good" }, [
+      el("div", { class: "rule", "aria-hidden": "true" }),
+      el("h1", { class: "result-name", text: ALL_GOOD.name }),
+      el("p", { class: "body", text: fill(ALL_GOOD.what, answers) })
+    ]));
   }
 
-  const again = el("button", { class: "back", text: "Start over", type: "button" });
-  again.addEventListener("click", () => { for (const k in answers) delete answers[k]; index = 0; render(); });
-  const back = el("button", { class: "back", text: "← Back", type: "button" });
-  back.addEventListener("click", () => { index = QUESTIONS.length - 1; render(); });
+  right.appendChild(contactBlock(result));
 
-  screen.appendChild(el("div", { class: "links" }, [back, again]));
-  app.appendChild(screen);
+  app.appendChild(left);
+  app.appendChild(right);
+  app.appendChild(bottomLinks());
   window.scrollTo(0, 0);
 }
 
