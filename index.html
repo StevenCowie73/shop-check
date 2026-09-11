@@ -176,6 +176,12 @@
   .center { text-align: center; margin: 14px 0 0; }
   .alt { color: var(--navy); font-weight: 600; font-size: 16px; }
   .links { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+  .msgbox { background: var(--card); border: 2px solid var(--line); border-radius: var(--radius); padding: 16px; margin-top: 18px; }
+  .msg { font: inherit; white-space: pre-wrap; word-break: break-word; margin: 0 0 14px; }
+  .msgbox .row { margin-top: 0; }
+  .phone { text-align: center; margin-top: 22px; }
+  .phone-label { color: var(--muted); font-weight: 600; font-size: 15px; }
+  .phone-number { font-size: 32px; font-weight: 800; color: var(--navy); letter-spacing: 0.5px; user-select: all; }
 
   ::selection { background: #ffd9c2; }
 </style>
@@ -289,6 +295,9 @@ const CONTACT_COPY = {
   button: "Want this set up? Text me the details",
   emailLink: "Or email me instead",
   reassure: "No cost to look. I'll call you, we'll talk it through, and you decide.",
+  copy: "Copy details",
+  copied: "Copied",
+  callLabel: "Text or call:",
   subject: "Shop Check results",
   signoff: "Sent from Shop Check"
 };
@@ -457,7 +466,7 @@ function buildMessage(result) {
 /* iPhones want "sms:NUMBER&body=", Android wants "sms:NUMBER?body=". */
 function isApple() {
   const ua = navigator.userAgent || "";
-  return /iPhone|iPad|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
+  return /iPhone|iPad|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 0);
 }
 function smsLink(number, body) {
   const digits = number.replace(/[^\d+]/g, "");
@@ -466,6 +475,28 @@ function smsLink(number, body) {
 }
 function mailLink(address, subject, body) {
   return `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+/* Phone or tablet = has a touchscreen AND says so in its user agent.
+   Anything else (laptops, touchscreen Windows machines) gets the
+   desktop fallback, since sms: links go nowhere there. */
+function isMobile() {
+  const ua = navigator.userAgent || "";
+  const touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 0);
+  return touch && mobileUA;
+}
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through to the old way */ }
+  const ta = el("textarea", { readonly: "", style: "position:fixed;top:0;left:0;opacity:0" });
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
 }
 function isDev() {
   return new URLSearchParams(location.search).get("dev") === "1";
@@ -498,10 +529,30 @@ function renderResults() {
   ]));
 
   const message = buildMessage(result);
-  const text = el("a", { class: "btn", href: smsLink(CONTACT.phone, message), text: CONTACT_COPY.button });
   const mail = el("a", { class: "alt", href: mailLink(CONTACT.email, CONTACT_COPY.subject, message), text: CONTACT_COPY.emailLink });
-  screen.appendChild(el("div", { class: "row" }, [text]));
-  screen.appendChild(el("p", { class: "center" }, [mail]));
+
+  if (isMobile()) {
+    const text = el("a", { class: "btn", href: smsLink(CONTACT.phone, message), text: CONTACT_COPY.button });
+    screen.appendChild(el("div", { class: "row" }, [text]));
+    screen.appendChild(el("p", { class: "center" }, [mail]));
+  } else {
+    /* Desktop: no sms: link. Show the message to copy, the number big, and email. */
+    const copyBtn = el("button", { class: "btn", text: CONTACT_COPY.copy, type: "button" });
+    copyBtn.addEventListener("click", async () => {
+      const ok = await copyText(message);
+      copyBtn.textContent = ok ? CONTACT_COPY.copied : CONTACT_COPY.copy;
+      setTimeout(() => { copyBtn.textContent = CONTACT_COPY.copy; }, 2000);
+    });
+    screen.appendChild(el("div", { class: "msgbox" }, [
+      el("pre", { class: "msg", text: message }),
+      el("div", { class: "row" }, [copyBtn])
+    ]));
+    screen.appendChild(el("div", { class: "phone" }, [
+      el("div", { class: "phone-label", text: CONTACT_COPY.callLabel }),
+      el("div", { class: "phone-number", text: CONTACT.phone })
+    ]));
+    screen.appendChild(el("p", { class: "center" }, [mail]));
+  }
   screen.appendChild(el("p", { class: "fine", text: CONTACT_COPY.reassure }));
 
   if (isDev()) {
@@ -545,7 +596,7 @@ function downloadConfig(result) {
 }
 
 /* Exposed for testing in the console: ShopCheck.evaluate({...answers}) */
-window.ShopCheck = { evaluate, buildConfig, buildMessage, smsLink, mailLink, MODULES, QUESTIONS, RULES, CONTACT };
+window.ShopCheck = { evaluate, buildConfig, buildMessage, smsLink, mailLink, isMobile, MODULES, QUESTIONS, RULES, CONTACT };
 
 render();
 </script>
