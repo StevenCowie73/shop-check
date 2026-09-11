@@ -476,14 +476,15 @@ function smsLink(number, body) {
 function mailLink(address, subject, body) {
   return `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
-/* Desktop = no touchscreen AND no mobile user agent. Anything with
-   either (phones, tablets, iPadOS reporting as a Mac) keeps the sms:
-   button. Desktop gets the copy box instead, since sms: goes nowhere. */
+/* Phone or tablet = a mobile user agent, or a Mac user agent with a
+   touchscreen (iPadOS reports itself as a Mac). Everything else,
+   touchscreen Windows laptops included, gets the desktop fallback,
+   since sms: links go nowhere there. */
 function isMobile() {
   const ua = navigator.userAgent || "";
-  const touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
   const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua);
-  return touch || mobileUA;
+  const ipadOS = ua.includes("Macintosh") && navigator.maxTouchPoints > 0;
+  return mobileUA || ipadOS;
 }
 async function copyText(text) {
   try {
