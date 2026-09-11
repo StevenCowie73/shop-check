@@ -262,14 +262,31 @@ const QUESTIONS = [
 ];
 
 /* ---------------------------------------------------------------------
-   The rules. Each module is switched on by one answer.
+   The rules. Each module has a "strong" and a "weak" test.
+
+   - strong : this answer alone is enough to make the module "Start here".
+   - weak   : worth doing, but only shows as "Next" / "After that".
+              If NOTHING strong fires, the top weak match becomes
+              "Start here" anyway (better than telling them all is well).
    Priority order for "Start here" = the order of keys in MODULES above.
    --------------------------------------------------------------------- */
 const RULES = {
-  missedCallTextBack: a => a.phone === "Nobody, it goes to voicemail" || a.phone === "I don't know",
-  quoteFollowUp:      a => a.followUp === "Never",
-  reviewRequests:     a => a.reviews === "Never",
-  onePageSite:        a => a.website === "No"
+  missedCallTextBack: {
+    strong: a => a.phone === "Nobody, it goes to voicemail" || a.phone === "I don't know",
+    weak:   a => false
+  },
+  quoteFollowUp: {
+    strong: a => a.followUp === "Never",
+    weak:   a => a.followUp === "Sometimes"
+  },
+  reviewRequests: {
+    strong: a => a.reviews === "Never",
+    weak:   a => a.reviews === "Sometimes"
+  },
+  onePageSite: {
+    strong: a => a.website === "No",
+    weak:   a => a.website === "Yes, but it's old"
+  }
 };
 
 const MAX_NEXT = 2;
@@ -284,13 +301,17 @@ let index = 0;
 
 function evaluate(a) {
   const enabled = {};
-  for (const key of Object.keys(MODULES)) enabled[key] = !!RULES[key](a);
-  const matched = Object.keys(MODULES).filter(k => enabled[k]);
-  return {
-    enabled,
-    startHere: matched[0] || null,
-    next: matched.slice(1, 1 + MAX_NEXT)
-  };
+  const strength = {};
+  for (const key of Object.keys(MODULES)) {
+    const r = RULES[key];
+    strength[key] = r.strong(a) ? "strong" : (r.weak(a) ? "weak" : null);
+    enabled[key] = strength[key] !== null;
+  }
+  const matched = Object.keys(MODULES).filter(k => enabled[k]);   // priority order
+  const strong = matched.filter(k => strength[k] === "strong");
+  const startHere = strong[0] || matched[0] || null;               // weak only wins if nothing strong fired
+  const next = matched.filter(k => k !== startHere).slice(0, MAX_NEXT);
+  return { enabled, strength, startHere, next };
 }
 
 function fill(text, a) {
@@ -417,6 +438,7 @@ function buildConfig(result) {
     createdAt: new Date().toISOString(),
     answers: Object.fromEntries(QUESTIONS.map(q => [q.key, answers[q.key] ?? null])),
     modules: result.enabled,
+    matchStrength: result.strength,
     startHere: result.startHere,
     next: result.next
   };
