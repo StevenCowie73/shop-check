@@ -196,7 +196,11 @@
    - "what"  : 2-3 plain sentences on what it does. You can use {name}
                (the business name) and {jobs} (the jobs-per-month answer).
    - "cost"  : what it likely costs them today to not have it, one line
-               per jobs-per-month answer so it stays concrete.
+               per jobs-per-month answer so it stays concrete. Used for
+               strong matches ("Never", "No", voicemail).
+   - "weakCost": softer version of the same, used for weak matches
+               ("Sometimes", "Yes, but it's old"). Falls back to "cost"
+               if missing.
    The order of the keys below IS the priority order for "Start here".
    ===================================================================== */
 const MODULES = {
@@ -207,6 +211,11 @@ const MODULES = {
       "1-5":  "At 1-5 jobs a month, one missed call can be a quarter of your month. Most people who hit voicemail don't leave a message. They just call the next name on the list.",
       "5-15": "At 5-15 jobs a month you're probably missing a few calls a week. If just one of those a month would have booked, that's a whole job walking to a competitor.",
       "15+":  "At 15+ jobs a month the phone rings more than anyone could answer. Missing a handful of calls a week likely means two or three lost jobs a month, every month."
+    },
+    weakCost: {
+      "1-5":  "At 1-5 jobs a month you're catching most calls, but the ones you miss on a job site are the ones that matter. A quick text back keeps them warm until you can ring them.",
+      "5-15": "At 5-15 jobs a month you're on the tools too much to catch everything. A text back means the calls that slip through don't go cold.",
+      "15+":  "At 15+ jobs a month nobody catches every call. This covers the ones that get away while you're up a ladder."
     }
   },
   quoteFollowUp: {
@@ -216,6 +225,11 @@ const MODULES = {
       "1-5":  "With 1-5 jobs a month, every quote counts. Quotes rarely die because of price. They die because the customer got busy. Bringing back one quiet quote a month is a big chunk of your income.",
       "5-15": "At 5-15 jobs a month you're likely sending twice that many quotes. If a third of them go quiet and a nudge rescues one or two, that's an extra job or two a month for no extra effort.",
       "15+":  "At 15+ jobs a month you don't have time to chase quotes, so most quiet ones just die. Bringing back even one in ten is a couple of extra jobs a month."
+    },
+    weakCost: {
+      "1-5":  "At 1-5 jobs a month you're following up when you remember. The ones you forget were probably the closest to saying yes. This just makes sure none get forgotten.",
+      "5-15": "At 5-15 jobs a month, 'sometimes' usually means the busy weeks get skipped, and busy weeks are when the most quotes are out. This does the chasing so you don't have to.",
+      "15+":  "At 15+ jobs a month you can't chase every quote by hand, so some slip. Making it automatic turns 'sometimes' into 'every time' with no extra work."
     }
   },
   reviewRequests: {
@@ -225,6 +239,11 @@ const MODULES = {
       "1-5":  "At 1-5 jobs a month, a handful of good reviews is the difference between showing up on Google and not. Right now every finished job is a review you're not getting.",
       "5-15": "At 5-15 jobs a month you could be adding several reviews a month. Instead the only people writing reviews are the unhappy ones, and that's what new customers see first.",
       "15+":  "At 15+ jobs a month you're leaving dozens of reviews on the table every year. The outfit with 80 reviews gets the call before the one with 8, even if you do better work."
+    },
+    weakCost: {
+      "1-5":  "At 1-5 jobs a month you're asking when it comes to mind. Asking every time, right as the job wraps up, could roughly double what you're getting now.",
+      "5-15": "At 5-15 jobs a month, asking sometimes still leaves most good jobs unreviewed. Asking automatically could add a few reviews a month with no extra effort.",
+      "15+":  "At 15+ jobs a month you're doing a lot of good work that never turns into a review. Making the ask automatic could mean dozens more a year."
     }
   },
   onePageSite: {
@@ -234,6 +253,11 @@ const MODULES = {
       "1-5":  "At 1-5 jobs a month, most customers Google you before they call, even the referrals. With nothing to find, some of them figure you've closed up and move on.",
       "5-15": "At 5-15 jobs a month your name is coming up in Google regularly. When there's nothing to tap on, you're handing those searches to whoever does have a page.",
       "15+":  "At 15+ jobs a month you've got the reputation but nowhere online to prove it. You're winning on word of mouth alone and losing everyone who can't find you."
+    },
+    weakCost: {
+      "1-5":  "At 1-5 jobs a month an old site beats none, but customers notice dated photos and a page that hasn't changed in years. A quick refresh keeps their trust.",
+      "5-15": "At 5-15 jobs a month people are checking your site before they call. An old one raises a small doubt at exactly the wrong moment. A clean page fixes that.",
+      "15+":  "At 15+ jobs a month your reputation is ahead of your website. An old site undersells the work you're doing now. A fresh page catches up."
     }
   }
 };
@@ -379,10 +403,11 @@ function render() {
   window.scrollTo(0, 0);
 }
 
-function moduleCard(key, tagText, cls) {
+function moduleCard(key, tagText, cls, strength) {
   const m = MODULES[key];
   const jobs = answers.jobsPerMonth;
-  const cost = (m.cost && m.cost[jobs]) || "";
+  const table = (strength === "weak" && m.weakCost) ? m.weakCost : m.cost;
+  const cost = (table && table[jobs]) || "";
   return el("article", { class: "card " + cls }, [
     el("div", { class: "tag", text: tagText }),
     el("h2", { text: m.name }),
@@ -402,8 +427,8 @@ function renderResults() {
     : "Nothing urgent. Here's what we saw." }));
 
   if (result.startHere) {
-    screen.appendChild(moduleCard(result.startHere, "Start here", "hero"));
-    result.next.forEach((key, i) => screen.appendChild(moduleCard(key, i === 0 ? "Next" : "After that", "next")));
+    screen.appendChild(moduleCard(result.startHere, "Start here", "hero", result.strength[result.startHere]));
+    result.next.forEach((key, i) => screen.appendChild(moduleCard(key, i === 0 ? "Next" : "After that", "next", result.strength[key])));
   } else {
     screen.appendChild(el("article", { class: "card good" }, [
       el("div", { class: "tag", text: "Good news" }),
