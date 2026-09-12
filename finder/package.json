@@ -5,7 +5,8 @@
   "description": "Builds a ranked call list of small trade businesses from the Google Places API (New).",
   "main": "find-prospects.js",
   "scripts": {
-    "find": "node find-prospects.js"
+    "find": "node find-prospects.js",
+    "calls": "node make-call-list.js"
   },
   "engines": {
     "node": ">=18"

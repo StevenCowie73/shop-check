@@ -48,6 +48,25 @@ It prints progress per search term, then a summary: how many businesses it
 found, how many scored above 50, how many API calls it made, and the top ten
 with score, name and phone.
 
+## The call list page
+
+After a run, build a phone-friendly page from the CSV:
+
+```
+node make-call-list.js
+```
+
+or `npm run calls`. It writes `out/call-list.html`, a single self-contained
+file holding every business scoring 60 or above, best first. Open it on your
+phone: each card has the name, score, trade, the reason they need us, and the
+phone number as a big tap-to-call button, plus links to the Google listing and
+to text them their Shop Check link. Tick businesses off as you call them, and
+the ticks stay put on that device. "Hide called" clears the ones you are done
+with out of the way.
+
+The cut-off score and the text you send are at the top of
+`make-call-list.js`, in the `LIST` block.
+
 ## What it writes
 
 - `out/prospects.csv` — sorted by score, highest first. Columns: score, name,
