@@ -28,3 +28,7 @@ Desktop.ini
 # Editors
 .vscode/
 .idea/
+
+# finder
+finder/.env
+finder/out/

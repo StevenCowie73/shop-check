@@ -1,0 +1,14 @@
+{
+  "name": "shop-check-finder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds a ranked call list of small trade businesses from the Google Places API (New).",
+  "main": "find-prospects.js",
+  "scripts": {
+    "find": "node find-prospects.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
