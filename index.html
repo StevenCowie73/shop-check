@@ -180,6 +180,11 @@
   a.link:hover, button.link:hover { color: var(--accent); }
   .link.quiet { color: var(--muted); font-size: var(--fs-bottom-link); }
   .bottom-links { display: flex; justify-content: center; gap: 28px; padding-top: 8px; }
+  .for-line {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    font-size: var(--fs-fine); color: var(--muted); margin-bottom: -12px;
+  }
+  .for-line .link.inline { font-size: var(--fs-fine); padding: 8px 0; }
   .bottom-links.start .link { visibility: hidden; }
 
   /* ---- Progress ---- */
@@ -413,6 +418,13 @@ const wrap = document.getElementById("wrap");
 const answers = {};
 let index = 0;
 
+/* A link that carries a name starts at the first question, not the
+   name field. Back and "Not you? Change it" still reach the field. */
+function seedFromParams() {
+  if (PARAMS.name) { answers.businessName = PARAMS.name; return 1; }
+  return 0;
+}
+
 function evaluate(a) {
   const enabled = {};
   const strength = {};
@@ -466,7 +478,12 @@ function link(text, onClick, quiet) {
 }
 
 function goBack() { index = Math.max(0, index - 1); render(); }
-function startOver() { for (const k in answers) delete answers[k]; index = 0; render(); }
+function startOver() {
+  for (const k in answers) delete answers[k];
+  if (PARAMS.name) answers.businessName = PARAMS.name;  /* keep the link's name, editable */
+  index = 0;
+  render();
+}
 
 function render() {
   app.innerHTML = "";
@@ -487,6 +504,14 @@ function render() {
   app.appendChild(progress);
 
   const block = el("div", { class: "centered", style: "flex:0;justify-content:flex-start" });
+  if (index === 1 && PARAMS.name && answers.businessName) {
+    const change = link("Not you? Change it", () => { index = 0; render(); }, true);
+    change.classList.add("inline");
+    block.appendChild(el("div", { class: "for-line" }, [
+      el("span", { text: `For: ${answers.businessName}` }),
+      change
+    ]));
+  }
   block.appendChild(el("h1", { class: "question", text: q.title }));
   const list = el("div", { class: "choices", role: "group", "aria-label": q.title });
   q.options.forEach(opt => {
@@ -579,6 +604,7 @@ function buildMessage(result) {
     lines.push("Shop Check says: nothing urgent right now.");
   }
   lines.push(CONTACT_COPY.signoff);
+  if (PARAMS.ref) lines.push(`Ref: ${PARAMS.ref}`);
   return lines.join("\n");
 }
 
@@ -621,6 +647,43 @@ async function copyText(text) {
 function isDev() {
   return new URLSearchParams(location.search).get("dev") === "1";
 }
+
+/* ---------------------------------------------------------------------
+   Link parameters.
+   ?name=  pre-fills the business name and skips the first screen.
+           Trimmed, stripped of HTML, capped at 80 characters.
+   ?ref=   a short tag saying which prospect the link went to. Letters,
+           numbers and dashes, up to 32 characters. Never shown on
+           screen; it rides along in the message and in config.json.
+           Anything else is ignored.
+   --------------------------------------------------------------------- */
+const NAME_MAX = 80;
+const REF_PATTERN = /^[A-Za-z0-9-]{1,32}$/;
+
+function cleanName(raw) {
+  if (!raw) return "";
+  return String(raw)
+    .replace(/<\/?[a-zA-Z][^>]*>/g, "")   /* drop anything that looks like a tag */
+    .replace(/[<>]/g, "")      /* and any stray angle brackets */
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, NAME_MAX)
+    .trim();
+}
+
+function cleanRef(raw) {
+  if (!raw) return null;
+  const ref = String(raw).trim();
+  return REF_PATTERN.test(ref) ? ref : null;
+}
+
+function readParams() {
+  let q;
+  try { q = new URLSearchParams(location.search); } catch (e) { return { name: "", ref: null }; }
+  return { name: cleanName(q.get("name")), ref: cleanRef(q.get("ref")) };
+}
+
+const PARAMS = readParams();
 
 /* The contact block. Same logic as before: phones get the sms: button,
    desktops get the message to copy plus the number written out. */
@@ -707,6 +770,7 @@ function buildConfig(result) {
     version: 1,
     createdAt: new Date().toISOString(),
     answers: Object.fromEntries(QUESTIONS.map(q => [q.key, answers[q.key] ?? null])),
+    ref: PARAMS.ref,
     modules: result.enabled,
     matchStrength: result.strength,
     startHere: result.startHere,
@@ -726,8 +790,9 @@ function downloadConfig(result) {
 }
 
 /* Exposed for testing in the console: ShopCheck.evaluate({...answers}) */
-window.ShopCheck = { evaluate, buildConfig, buildMessage, smsLink, mailLink, isMobile, MODULES, QUESTIONS, RULES, CONTACT };
+window.ShopCheck = { evaluate, buildConfig, buildMessage, smsLink, mailLink, isMobile, cleanName, cleanRef, PARAMS, MODULES, QUESTIONS, RULES, CONTACT };
 
+index = seedFromParams();
 render();
 </script>
 </body>
