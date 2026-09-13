@@ -22,11 +22,16 @@ const path = require('path');
 const LIST = {
   minScore: 60,
   smsPrefix: "Hi, this is Steven — here's that link: ",
-  genericTypes: ['point_of_interest', 'establishment', 'service', 'store']
+  genericTypes: ['point_of_interest', 'establishment', 'service', 'store'],
+  /* If out/site-audit.json exists (from check-sites.js), a business whose
+     website scored this badly or worse gets a "Website: ..." line on its
+     card. Businesses with no website are left alone. */
+  siteAuditMinScore: 40
 };
 
 const OUT_DIR = process.env.SHOP_CHECK_OUT_DIR || path.join(__dirname, 'out');
 const SRC = path.join(OUT_DIR, 'prospects.csv');
+const AUDIT_SRC = path.join(OUT_DIR, 'site-audit.json');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -63,7 +68,30 @@ function dialable(phone) {
   return d ? '+' + d : '';
 }
 
-function readProspects(csvText) {
+/* The website audit is optional. No audit file, no website lines. */
+function readAudit(jsonText) {
+  const byPlaceId = new Map();
+  if (!jsonText) return byPlaceId;
+  let data;
+  try { data = JSON.parse(jsonText); } catch (e) { return byPlaceId; }
+  const sites = Array.isArray(data && data.sites) ? data.sites : [];
+  for (const site of sites) {
+    if (!site || !site.placeId) continue;
+    const score = Number(site.siteScore);
+    if (!Number.isFinite(score) || score < LIST.siteAuditMinScore) continue;
+    if (!site.whatsWrong) continue;
+    byPlaceId.set(site.placeId, { score, whatsWrong: String(site.whatsWrong) });
+  }
+  return byPlaceId;
+}
+
+function siteLine(audit, placeId, website) {
+  if (!audit || !website) return '';          /* no website, card unchanged */
+  const hit = audit.get(placeId);
+  return hit ? hit.whatsWrong : '';
+}
+
+function readProspects(csvText, audit) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
@@ -82,7 +110,8 @@ function readProspects(csvText) {
       trade: prettyTrade(r[ix.primary_type]),
       why: r[ix.why],
       maps: r[ix.google_maps_url],
-      link: r[ix.shop_check_link]
+      link: r[ix.shop_check_link],
+      site: siteLine(audit, r[ix.place_id], r[ix.website])
     }))
     .filter(b => b.score >= LIST.minScore)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -208,6 +237,12 @@ function buildHtml(businesses) {
     letter-spacing: 0.06em; color: var(--muted); margin-top: -6px;
   }
   .why { font-size: 15px; line-height: 1.45; color: var(--body-muted); text-wrap: pretty; }
+  .site {
+    font-size: 14px; line-height: 1.45; color: var(--accent-dark);
+    background: var(--callout); border-radius: 6px; padding: 10px 12px;
+    text-wrap: pretty;
+  }
+  .site strong { font-weight: 700; }
 
   .call {
     display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -367,6 +402,9 @@ function card(b) {
   ]));
   if (b.trade) node.appendChild(el("div", { class: "trade", text: b.trade }));
   if (b.why) node.appendChild(el("p", { class: "why", text: b.why }));
+  if (b.site) node.appendChild(el("p", { class: "site" }, [
+    el("strong", { text: "Website: " }), b.site
+  ]));
 
   if (b.dial) {
     node.appendChild(el("a", {
@@ -442,15 +480,23 @@ function main() {
     console.error('Run the finder first:  node find-prospects.js');
     process.exit(1);
   }
-  const { total, businesses } = readProspects(fs.readFileSync(SRC, 'utf8'));
+  const auditText = fs.existsSync(AUDIT_SRC) ? fs.readFileSync(AUDIT_SRC, 'utf8') : '';
+  const audit = readAudit(auditText);
+  const { total, businesses } = readProspects(fs.readFileSync(SRC, 'utf8'), audit);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST, buildHtml(businesses), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);
   console.log(`Read ${total} businesses from prospects.csv`);
   console.log(`Kept ${businesses.length} scoring ${LIST.minScore} or above`);
+  if (!auditText) {
+    console.log('No site-audit.json, so no website lines. Run check-sites.js to add them.');
+  } else {
+    const withLine = businesses.filter(b => b.site).length;
+    console.log(`Website lines on ${withLine} of them (site score ${LIST.siteAuditMinScore}+)`);
+  }
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, siteLine, readProspects, buildHtml, main };
 
 if (require.main === module) main();
