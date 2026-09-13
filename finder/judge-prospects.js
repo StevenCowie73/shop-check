@@ -76,8 +76,22 @@ Rules, in order of importance:
    embarrass the caller: no mockery, no speculation about their competence or finances, no
    sales patter, no flattery, no exclamation marks.
 4. one_line is a plain spoken opening sentence, the kind one person says to another on the
-   phone. It must be specific to this business and grounded in the input. No pitch, no
-   "I noticed you might be losing customers", no questions designed to corner them.
+   phone. It should sound like somebody local who looked them up, not somebody working
+   through a list. It must be specific to this business and grounded in the input. No pitch,
+   no "I noticed you might be losing customers", no questions designed to corner them.
+
+5. one_line leads with the strongest evidence you actually have, in this order:
+   a. A responsiveness problem a customer described. Speak to the customer's experience
+      itself - somebody could not get a call back, somebody was waiting - not to the review
+      as a review. Never say "a reviewer said" or "your reviews mention".
+   b. Reviews being thin or old: only a handful, or nothing recent.
+   c. The website: missing, or the specific thing wrong with it.
+   Only lead with the website when there is genuinely nothing above it. Leading with a
+   missing website when you had something better is the wrong answer.
+
+6. When the evidence is thin and verdict_score is low, say so plainly instead of
+   manufacturing a hook. "I could not find much about you online beyond the listing" is a
+   better opener than a reason invented to have something to say.
 
 Scoring verdict_score, 0-100, is how likely this business is to actually buy:
   - Small homeowner-facing operations showing signs they are missing calls or slow to reply
