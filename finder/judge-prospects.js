@@ -94,9 +94,9 @@ const JUDGMENT_TOOL = {
     type: 'object',
     properties: {
       size: { type: 'string', enum: ['solo', 'small crew', 'established firm', 'unknown'] },
-      size_evidence: { type: 'string', description: 'The evidence that decided size. Empty string if unknown.' },
+      size_evidence: { type: 'string', description: 'The evidence that decided size. The single word unknown if there is none.' },
       customer: { type: 'string', enum: ['homeowners', 'businesses/contractors', 'both', 'unknown'] },
-      owner_name: { type: 'string', description: "The owner's name if it appears anywhere in the input. Empty string if it does not." },
+      owner_name: { type: 'string', description: "The owner's name if it appears anywhere in the input. The single word unknown if it does not." },
       responsiveness_signals: {
         type: 'array',
         description: 'Review fragments suggesting missed calls, slow callbacks, unanswered messages or no-shows. Empty if there are none.',
@@ -112,7 +112,9 @@ const JUDGMENT_TOOL = {
       },
       reputation: { type: 'string', enum: ['strong', 'mixed', 'weak', 'too few reviews'] },
       best_pitch: { type: 'string', enum: ['missed calls', 'reviews', 'website', 'multiple', 'skip'] },
-      verdict_score: { type: 'integer', minimum: 0, maximum: 100 },
+      /* A strict tool schema rejects minimum/maximum, so the range lives in
+         the description and the value is clamped when it comes back. */
+      verdict_score: { type: 'integer', description: 'How likely this business is to actually buy, from 0 to 100.' },
       one_line: { type: 'string', description: 'One plain spoken sentence to open a phone call with.' },
       reasoning: { type: 'string', description: 'Two sentences at most.' }
     },
@@ -139,6 +141,15 @@ const DETAIL_FIELDS = [
 ].join(',');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* find-prospects' redact only knows the Google key; nothing should be able
+   to print either of them. */
+function scrub(text) {
+  let s = redact(String(text));
+  const anth = process.env.ANTHROPIC_API_KEY;
+  if (anth) s = s.split(anth).join('[REDACTED_KEY]');
+  return s;
+}
 
 /* ---------- reading what the other two scripts wrote ---------- */
 function readProspects(csvText) {
@@ -199,9 +210,9 @@ async function fetchDetails(id, apiKey) {
     if (status === 200) return body;
     /* A bad key or a malformed request will not improve by asking again. */
     if (status === 400 || status === 401 || status === 403 || status === 404) {
-      throw new Error(redact(`Places API ${status} for ${id}: ${text.slice(0, 300)}`));
+      throw new Error(scrub(`Places API ${status} for ${id}: ${text.slice(0, 300)}`));
     }
-    if (attempt === 5) throw new Error(redact(`Places API ${status} for ${id}, gave up after 5 tries`));
+    if (attempt === 5) throw new Error(scrub(`Places API ${status} for ${id}, gave up after 5 tries`));
     await sleep(wait);
     wait *= 2;
   }
@@ -353,6 +364,31 @@ function buildInput(record) {
 /* ---------- judging ---------- */
 function judgePath(id) { return path.join(JUDGE_DIR, id + '.json'); }
 
+/* Now and then a model writes its own tool-call delimiters into a string
+   field instead of leaving it empty. That is not a judgment, so it is
+   thrown away and asked again rather than cached. */
+const SCAFFOLDING = /<\/?antml|<\/?parameter\b|<\/?function_calls\b|<\/?invoke\b/i;
+
+function leaked(judgment) {
+  const bad = [];
+  const check = (label, value) => {
+    if (typeof value === 'string' && SCAFFOLDING.test(value)) bad.push(label);
+  };
+  check('owner_name', judgment.owner_name);
+  check('size_evidence', judgment.size_evidence);
+  check('one_line', judgment.one_line);
+  check('reasoning', judgment.reasoning);
+  for (const s of judgment.responsiveness_signals || []) check('responsiveness_signals', s.quote);
+  return bad;
+}
+
+/* "unknown" is the answer we asked for when there is nothing; null is what
+   we store, so the CSV column is empty rather than saying unknown. */
+function orNull(value) {
+  const s = String(value == null ? '' : value).trim();
+  return !s || s.toLowerCase() === 'unknown' || s.toLowerCase() === 'none' ? null : s;
+}
+
 function loadSdk() {
   try { return require('@anthropic-ai/sdk'); }
   catch (e) {
@@ -383,21 +419,30 @@ async function judgeOne(client, Anthropic, record) {
       });
       const call = res.content.find(b => b.type === 'tool_use');
       if (!call) throw new Error('Claude returned no judgment for ' + record.placeId);
+      const spoiled = leaked(call.input);
+      if (spoiled.length) {
+        throw Object.assign(
+          new Error(`the model wrote tool-call markup into ${spoiled.join(', ')}`),
+          { retryable: true }
+        );
+      }
       const judgment = {
         placeId: record.placeId,
         judgedAt: new Date().toISOString(),
         model: JUDGE.model,
         usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
         ...call.input,
-        /* the schema uses "" rather than a union type; null is what we store */
-        owner_name: call.input.owner_name || null,
+        /* the schema asks for the word "unknown"; null is what we store */
+        owner_name: orNull(call.input.owner_name),
+        size_evidence: orNull(call.input.size_evidence) || '',
         verdict_score: Math.max(0, Math.min(100, Number(call.input.verdict_score) || 0))
       };
       fs.mkdirSync(JUDGE_DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify(judgment, null, 2), 'utf8');
       return { judgment, cached: false };
     } catch (err) {
-      const retryable = err instanceof Anthropic.RateLimitError
+      const retryable = err.retryable
+        || err instanceof Anthropic.RateLimitError
         || (err instanceof Anthropic.APIError && err.status >= 500)
         || err instanceof Anthropic.APIConnectionError;
       if (!retryable || attempt === JUDGE.maxRetries) throw err;
@@ -509,7 +554,7 @@ function summarise(rows) {
 
 /* ---------- the run ---------- */
 function parseArgs(argv) {
-  const opts = { all: false, gatherOnly: false, judgeOnly: false, limit: null, start: 0 };
+  const opts = { all: false, gatherOnly: false, judgeOnly: false, limit: null, start: 0, includeUnreachable: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--all' || a === '--yes') opts.all = true;
@@ -517,6 +562,7 @@ function parseArgs(argv) {
     else if (a === '--judge' || a === '--judge-only') opts.judgeOnly = true;
     else if (a === '--limit') opts.limit = Number(argv[++i]);
     else if (a === '--start') opts.start = Number(argv[++i]) || 0;
+    else if (a === '--include-unreachable') opts.includeUnreachable = true;
   }
   return opts;
 }
@@ -537,14 +583,23 @@ async function main() {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   const audit = readAudit();
-  const all = readProspects(fs.readFileSync(SRC, 'utf8'));
+  const everyone = readProspects(fs.readFileSync(SRC, 'utf8'));
+  /* No phone number means there is nobody to ring, so there is nothing to
+     judge and no reason to pay for their details. */
+  const unreachable = everyone.filter(b => !b.phone);
+  const all = opts.includeUnreachable ? everyone : everyone.filter(b => b.phone);
   const workAll = all.slice(opts.start);
   let work = workAll;
   const preview = !opts.all;
   if (preview) work = work.slice(0, opts.limit || JUDGE.previewCount);
   else if (opts.limit) work = work.slice(0, opts.limit);
 
-  console.log(`${all.length} businesses in prospects.csv, ${audit.size} of them audited.`);
+  console.log(`${everyone.length} businesses in prospects.csv, ${audit.size} of them audited.`);
+  if (unreachable.length) {
+    console.log(opts.includeUnreachable
+      ? `${unreachable.length} have no phone number and are included because of --include-unreachable.`
+      : `Skipping ${unreachable.length} with no phone number. ${all.length} left to judge.`);
+  }
   console.log(preview
     ? `Preview run: the first ${work.length}. Nothing else runs until you pass --all.`
     : `Full run: ${work.length}.`);
@@ -590,7 +645,7 @@ async function main() {
       return judgment;
     } catch (err) {
       failed++;
-      console.error(`\n  ${record.prospect.name}: ${redact(String(err && err.message || err)).slice(0, 160)}`);
+      console.error(`\n  ${record.prospect.name}: ${scrub(String(err && err.message || err)).slice(0, 160)}`);
       return null;
     }
   });
@@ -610,6 +665,12 @@ async function main() {
     })
     .filter(Boolean)
     .sort((a, b) => b.verdict_score - a.verdict_score || a.name.localeCompare(b.name));
+
+  if (!rows.length) {
+    console.log('');
+    console.log('No judgments came back, so judgments.csv and judgments.json were left alone.');
+    return;
+  }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST_CSV, toCsv(rows), 'utf8');
@@ -639,7 +700,7 @@ module.exports = {
 
 if (require.main === module) {
   main().catch(err => {
-    console.error('\nFailed: ' + redact(err && err.message ? err.message : err));
+    console.error('\nFailed: ' + scrub(err && err.message ? err.message : err));
     process.exit(1);
   });
 }
