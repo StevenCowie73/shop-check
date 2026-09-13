@@ -67,6 +67,40 @@ with out of the way.
 The cut-off score and the text you send are at the top of
 `make-call-list.js`, in the `LIST` block.
 
+## Auditing the websites they do have
+
+Of the businesses the finder turns up, plenty have a website that is worse
+than no website. This checks them:
+
+```
+node check-sites.js
+```
+
+or `npm run sites`. It visits every prospect that lists a website, one at a
+time, and scores how badly the site needs replacing: does it load at all, is
+it still plain http, was it ever built for phones, is there a phone number on
+the page, how old is the newest date on it, is it running dead technology, and
+is it really their own site rather than a Facebook or Yelp page.
+
+It writes `out/site-audit.csv` with the site score, the prospect score, name,
+phone, website and a plain-English "what's wrong" line, worst first, and
+`out/site-audit.json` with everything it recorded for each site. The worst 15
+are printed at the end.
+
+It is deliberately polite: one request at a time, a ten second timeout, a
+normal browser user agent, `robots.txt` respected including any crawl-delay,
+and no retries. A site that errors is recorded and left alone.
+
+Options: `--limit 20` checks only the first 20, `--start 40` skips the first 40
+so you can pick up a part-finished run.
+
+The scoring weights and the visiting settings are two objects at the top of
+`check-sites.js`.
+
+If every single site comes back with the same error, that is a firewall, a
+proxy or a captive network between you and the internet, not 200 broken
+websites. Try one of the addresses in your own browser before believing it.
+
 ## What it writes
 
 - `out/prospects.csv` — sorted by score, highest first. Columns: score, name,
