@@ -23,11 +23,21 @@ building a prospect call list from the Google Places API (New):
 See `finder/README.md` for how to run them and what the settings mean.
 
 **`finder/out/` holds real prospect phone numbers.** It is git-ignored and it
-must stay that way. Never commit it, never paste its contents into a commit
-message, an issue, a pull request, an artifact, or anywhere else public, and
-never publish a generated call list. This is a public repository; generated
-lists stay on the machine that made them. The same goes for `finder/.env`,
-which holds the Google API key.
+must stay that way.
+
+Never put prospect data anywhere public or shareable. That means: never
+commit it to this repository, which is public; never serve it from GitHub
+Pages; and never paste it into a commit message, an issue, a pull request,
+or any page that someone other than the owner can open.
+
+The owner's own private Artifact is the exception. The call list at
+https://claude.ai/code/artifact/ed4d3506-ab05-4447-ab64-ebb88237a87d is
+republished from `out/call-list.html` on request — that is its intended home,
+since the point of the page is to have it on a phone. Republish to that same
+URL rather than creating a new one, keep it private, and never share it.
+
+The same care applies to `finder/.env`, which holds the Google API key: never
+commit it, and never print the key.
 
 ## Reporting
 
