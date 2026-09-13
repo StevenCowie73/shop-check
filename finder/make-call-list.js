@@ -32,6 +32,12 @@ const LIST = {
      that would qualify for both is only ever shown in B. */
   sectionATitle: "Missing calls and reviews",
   sectionBTitle: "Bad website",
+  /* If out/judgments.json exists (from judge-prospects.js), everything
+     scoring this or better on verdict score gets its own tab, shown first
+     and opened by default. A business can appear here and on A or B —
+     this tab is a shortlist, not a category. */
+  sectionCTitle: "Best bets",
+  verdictMinScore: 60,
   /* Shown when the page is inside a frame, where tel: and sms: links go
      nowhere, so the buttons copy instead. */
   copiedPhone: "Copied — paste in your dialler",
@@ -42,6 +48,7 @@ const LIST = {
 const OUT_DIR = process.env.SHOP_CHECK_OUT_DIR || path.join(__dirname, 'out');
 const SRC = path.join(OUT_DIR, 'prospects.csv');
 const AUDIT_SRC = path.join(OUT_DIR, 'site-audit.json');
+const JUDGE_SRC = path.join(OUT_DIR, 'judgments.json');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -78,6 +85,28 @@ function dialable(phone) {
   return d ? '+' + d : '';
 }
 
+/* The judgments are optional too. No judgments file, no "Best bets" tab.
+   Read from judgments.json rather than judgments.csv: the CSV has no
+   place_id column, and without it a card cannot carry its tick state,
+   its Google link or its Shop Check link. */
+function readJudgments(jsonText) {
+  const byPlaceId = new Map();
+  if (!jsonText) return byPlaceId;
+  let data;
+  try { data = JSON.parse(jsonText); } catch (e) { return byPlaceId; }
+  for (const j of (data && data.judgments) || []) {
+    if (!j || !j.placeId) continue;
+    const score = Number(j.verdict_score);
+    if (!Number.isFinite(score)) continue;
+    byPlaceId.set(j.placeId, {
+      score,
+      pitch: String(j.best_pitch || ''),
+      oneLine: String(j.one_line || '')
+    });
+  }
+  return byPlaceId;
+}
+
 /* The website audit is optional. No audit file, no website lines. */
 function readAudit(jsonText) {
   const byPlaceId = new Map();
@@ -107,7 +136,7 @@ function siteScore(audit, placeId, website) {
   return hit ? hit.score : 0;
 }
 
-function readProspects(csvText, audit) {
+function readProspects(csvText, audit, judgments) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
@@ -129,7 +158,8 @@ function readProspects(csvText, audit) {
       link: r[ix.shop_check_link],
       site: siteLine(audit, r[ix.place_id], r[ix.website]),
       siteScore: siteScore(audit, r[ix.place_id], r[ix.website]),
-      hasWebsite: Boolean(r[ix.website])
+      hasWebsite: Boolean(r[ix.website]),
+      verdict: (judgments && judgments.get(r[ix.place_id])) || null
     }));
 
   /* B first: a bad website is the more specific complaint, and a business
@@ -144,7 +174,14 @@ function readProspects(csvText, audit) {
     .filter(x => x.score >= LIST.minScore && !x.hasWebsite && !inB.has(x.id))
     .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name));
 
-  return { total: body.length, sections: { a, b } };
+  /* C: the shortlist. Deliberately not deduped against A or B — a business
+     worth ringing should be on this tab whatever else it is. */
+  const c = all
+    .filter(x => x.verdict && x.verdict.score >= LIST.verdictMinScore)
+    .sort((x, y) => y.verdict.score - x.verdict.score || x.name.localeCompare(y.name))
+    .map(x => ({ ...x, score: x.verdict.score, pitch: x.verdict.pitch, oneLine: x.verdict.oneLine }));
+
+  return { total: body.length, sections: { c, a, b } };
 }
 
 /* ---------- the page ---------- */
@@ -320,20 +357,32 @@ function buildHtml(sections) {
   .card.done .toggle .ring { border-color: var(--accent); background: var(--accent); }
   .card.done .toggle .ring svg { display: block; }
 
-  .tabs { display: flex; gap: 8px; margin: 12px 0 2px; }
+  .tabs { display: flex; gap: 6px; margin: 12px 0 2px; }
   .tab {
     flex: 1 1 0; min-width: 0;
-    display: flex; align-items: baseline; justify-content: center; gap: 8px;
-    min-height: 48px; padding: 8px 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    min-height: 56px; padding: 7px 6px;
     background: transparent; border: 2px solid var(--line); border-radius: var(--radius);
-    font-size: 15px; font-weight: 600; color: var(--muted);
+    font-weight: 600; color: var(--muted);
     cursor: pointer; text-align: center; touch-action: manipulation;
   }
   .tab:hover { background: var(--hover-fill); color: var(--ink); }
-  .tab .tablabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tab .tabcount { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tab .tablabel { font-size: 12.5px; line-height: 1.2; text-wrap: balance; }
+  .tab .tabcount { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
   .tab[aria-selected="true"] {
     border-color: var(--ink); background: var(--surface); color: var(--ink);
+  }
+
+  /* the opening line is the thing being read off the screen mid-call */
+  .opener {
+    font-size: 19px; line-height: 1.45; color: var(--ink);
+    text-wrap: pretty; margin: 2px 0;
+  }
+  .pitch {
+    align-self: flex-start; flex: none;
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent-dark); background: var(--callout);
+    border-radius: 4px; padding: 3px 8px;
   }
 
   .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 17px; }
@@ -350,11 +399,14 @@ function buildHtml(sections) {
     <h1 class="counts" id="counts">&nbsp;</h1>
     <div class="bar" aria-hidden="true"><div id="bar"></div></div>
     <div class="tabs" role="tablist">
-      <button class="tab" id="tab-a" type="button" role="tab" aria-selected="true" aria-controls="list">
-        <span class="tablabel" id="label-a"></span><span class="tabcount" id="count-a"></span>
+      <button class="tab" id="tab-c" type="button" role="tab" aria-selected="true" aria-controls="list">
+        <span class="tabcount" id="count-c"></span><span class="tablabel" id="label-c"></span>
+      </button>
+      <button class="tab" id="tab-a" type="button" role="tab" aria-selected="false" aria-controls="list">
+        <span class="tabcount" id="count-a"></span><span class="tablabel" id="label-a"></span>
       </button>
       <button class="tab" id="tab-b" type="button" role="tab" aria-selected="false" aria-controls="list">
-        <span class="tablabel" id="label-b"></span><span class="tabcount" id="count-b"></span>
+        <span class="tabcount" id="count-b"></span><span class="tablabel" id="label-b"></span>
       </button>
     </div>
     <button class="hide" id="hide" type="button" aria-pressed="false">
@@ -367,7 +419,8 @@ function buildHtml(sections) {
 
 <script>
 const SECTIONS = ${payload};
-const TITLES = ${JSON.stringify({ a: LIST.sectionATitle, b: LIST.sectionBTitle })};
+const TITLES = ${JSON.stringify({ c: LIST.sectionCTitle, a: LIST.sectionATitle, b: LIST.sectionBTitle })};
+const TAB_ORDER = ["c", "a", "b"];
 const SMS_PREFIX = ${JSON.stringify(LIST.smsPrefix)};
 const MIN_SCORE = ${LIST.minScore};
 const COPY = ${JSON.stringify({ copiedPhone: LIST.copiedPhone, copiedMessage: LIST.copiedMessage, copyFailed: LIST.copyFailed })};
@@ -375,6 +428,7 @@ const CALLED_KEY = "shopCheckCalled.v1";
 const HIDE_KEY = "shopCheckHideCalled.v1";
 const TAB_KEY = "shopCheckTab.v1";
 const SITE_MIN = ${LIST.siteAuditMinScore};
+const VERDICT_MIN = ${LIST.verdictMinScore};
 
 /* iPhones want "sms:NUMBER&body=", everything else "?body=" */
 function isApple() {
@@ -440,10 +494,12 @@ function writeStore(key, value) {
 
 const called = new Set(Array.isArray(readStore(CALLED_KEY, [])) ? readStore(CALLED_KEY, []) : []);
 let hiding = readStore(HIDE_KEY, false) === true;
-let active = readStore(TAB_KEY, "a") === "b" ? "b" : "a";
-/* Never open on an empty tab when the other one has work in it. */
-if (!SECTIONS[active].length && SECTIONS[active === "a" ? "b" : "a"].length) {
-  active = active === "a" ? "b" : "a";
+/* A fresh visitor opens on "Best bets"; after that the page remembers. */
+const storedTab = readStore(TAB_KEY, null);
+let active = TAB_ORDER.includes(storedTab) ? storedTab : "c";
+/* Never open on an empty tab while another has work in it. */
+if (!SECTIONS[active].length) {
+  active = TAB_ORDER.find(k => SECTIONS[k].length) || active;
 }
 const rows = () => SECTIONS[active];
 
@@ -452,7 +508,7 @@ const countsEl = document.getElementById("counts");
 const barEl = document.getElementById("bar");
 const footEl = document.getElementById("foot");
 const hideEl = document.getElementById("hide");
-const tabEls = { a: document.getElementById("tab-a"), b: document.getElementById("tab-b") };
+const tabEls = Object.fromEntries(TAB_ORDER.map(k => [k, document.getElementById("tab-" + k)]));
 const emptyEl = document.createElement("p");
 emptyEl.className = "empty";
 
@@ -501,7 +557,7 @@ function updateCounts() {
   countsEl.appendChild(el("span", { class: "done", text: done + " done" }));
   barEl.style.width = total ? Math.round((done / total) * 100) + "%" : "0%";
 
-  for (const key of ["a", "b"]) {
+  for (const key of TAB_ORDER) {
     const sect = SECTIONS[key];
     const remaining = sect.filter(b => !called.has(b.id)).length;
     document.getElementById("label-" + key).textContent = TITLES[key];
@@ -523,30 +579,39 @@ function applyHiding() {
 }
 
 function card(b) {
-  /* On the "Bad website" tab the badge is the site score, because that is
-     what the section is ranked by; showing the prospect score there would
-     make the order look arbitrary. */
+  /* The badge is whatever the tab is ranked by, so the order always reads:
+     verdict score on "Best bets", site score on "Bad website", Shop Check
+     score on "Missing calls and reviews". */
+  const onBestTab = active === "c";
   const onSiteTab = active === "b";
   const shown = onSiteTab ? b.siteScore : b.score;
-  const urgent = onSiteTab ? b.siteScore >= 70 : b.score >= 90;
+  const urgent = onBestTab ? b.score >= 70 : onSiteTab ? b.siteScore >= 70 : b.score >= 90;
   const node = el("article", { class: "card" + (urgent ? " hot" : "") });
   node.appendChild(el("div", { class: "top" }, [
     el("h2", { class: "name", text: b.name }),
     el("span", {
       class: "badge" + (urgent ? " high" : ""), text: String(shown),
-      title: onSiteTab ? "Website score" : "Shop Check score"
+      title: onBestTab ? "Verdict score" : onSiteTab ? "Website score" : "Shop Check score"
     })
   ]));
   if (b.trade) node.appendChild(el("div", { class: "trade", text: b.trade }));
 
-  const whyEl = b.why ? el("p", { class: "why", text: b.why }) : null;
-  const siteEl = b.site ? el("p", { class: "site" }, [
-    el("strong", { text: "Website: " }), b.site
-  ]) : null;
-  /* The headline problem comes first: the website on tab B, the reason
-     they are worth a call on tab A. */
-  for (const part of onSiteTab ? [siteEl, whyEl] : [whyEl, siteEl]) {
-    if (part) node.appendChild(part);
+  if (onBestTab) {
+    /* This tab exists to hand you the opening sentence, so that is the
+       card: the pitch it belongs to, then the line, big enough to read
+       while the phone is ringing. */
+    if (b.pitch) node.appendChild(el("span", { class: "pitch", text: b.pitch }));
+    if (b.oneLine) node.appendChild(el("p", { class: "opener", text: b.oneLine }));
+  } else {
+    const whyEl = b.why ? el("p", { class: "why", text: b.why }) : null;
+    const siteEl = b.site ? el("p", { class: "site" }, [
+      el("strong", { text: "Website: " }), b.site
+    ]) : null;
+    /* The headline problem comes first: the website on tab B, the reason
+       they are worth a call on tab A. */
+    for (const part of onSiteTab ? [siteEl, whyEl] : [whyEl, siteEl]) {
+      if (part) node.appendChild(part);
+    }
   }
 
   if (b.dial) {
@@ -622,7 +687,7 @@ document.getElementById("reset").addEventListener("click", () => {
 
 /* Ticks are keyed on the business, not the section, so a business that
    somehow appeared twice would stay in step. Switching tab just redraws. */
-for (const key of ["a", "b"]) {
+for (const key of TAB_ORDER) {
   tabEls[key].addEventListener("click", () => {
     if (active === key) return;
     active = key;
@@ -632,7 +697,9 @@ for (const key of ["a", "b"]) {
 }
 
 function footText() {
-  const base = active === "b"
+  const base = active === "c"
+    ? "Scoring " + VERDICT_MIN + " and above on how likely they are to buy, best first."
+    : active === "b"
     ? "Websites scoring " + SITE_MIN + " and above, worst first."
     : "No website at all, scoring " + MIN_SCORE + " and above, best prospects first.";
   return base + " Ticks are saved on this device only."
@@ -669,11 +736,18 @@ function main() {
   }
   const auditText = fs.existsSync(AUDIT_SRC) ? fs.readFileSync(AUDIT_SRC, 'utf8') : '';
   const audit = readAudit(auditText);
-  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit);
+  const judgeText = fs.existsSync(JUDGE_SRC) ? fs.readFileSync(JUDGE_SRC, 'utf8') : '';
+  const judgments = readJudgments(judgeText);
+  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST, buildHtml(sections), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);
   console.log(`Read ${total} businesses from prospects.csv`);
+  if (!judgeText) {
+    console.log(`${LIST.sectionCTitle}: 0 — no judgments.json. Run judge-prospects.js to fill this tab.`);
+  } else {
+    console.log(`${LIST.sectionCTitle}: ${sections.c.length} (verdict score ${LIST.verdictMinScore}+)`);
+  }
   console.log(`${LIST.sectionATitle}: ${sections.a.length} (no website, scoring ${LIST.minScore}+)`);
   if (!auditText) {
     console.log(`${LIST.sectionBTitle}: 0 — no site-audit.json. Run check-sites.js to fill this tab.`);
@@ -683,6 +757,6 @@ function main() {
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, siteLine, siteScore, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readJudgments, siteLine, siteScore, readProspects, buildHtml, main };
 
 if (require.main === module) main();
