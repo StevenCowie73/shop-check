@@ -25,8 +25,13 @@ const LIST = {
   genericTypes: ['point_of_interest', 'establishment', 'service', 'store'],
   /* If out/site-audit.json exists (from check-sites.js), a business whose
      website scored this badly or worse gets a "Website: ..." line on its
-     card. Businesses with no website are left alone. */
+     card, and lands in the "Bad website" section. */
   siteAuditMinScore: 40,
+  /* The page has two tabs. A holds the businesses with nothing online to
+     call about; B holds the ones whose website is the problem. A business
+     that would qualify for both is only ever shown in B. */
+  sectionATitle: "Missing calls and reviews",
+  sectionBTitle: "Bad website",
   /* Shown when the page is inside a frame, where tel: and sms: links go
      nowhere, so the buttons copy instead. */
   copiedPhone: "Copied — paste in your dialler",
@@ -96,16 +101,22 @@ function siteLine(audit, placeId, website) {
   return hit ? hit.whatsWrong : '';
 }
 
+function siteScore(audit, placeId, website) {
+  if (!audit || !website) return 0;
+  const hit = audit.get(placeId);
+  return hit ? hit.score : 0;
+}
+
 function readProspects(csvText, audit) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
   const ix = Object.fromEntries(head.map((h, i) => [h, i]));
-  for (const needed of ['score', 'name', 'phone', 'primary_type', 'google_maps_url', 'place_id', 'why', 'shop_check_link']) {
+  for (const needed of ['score', 'name', 'phone', 'primary_type', 'google_maps_url', 'place_id', 'why', 'shop_check_link', 'website']) {
     if (!(needed in ix)) throw new Error(`prospects.csv has no "${needed}" column`);
   }
   const body = rows.slice(1).filter(r => r.length === head.length && r[ix.place_id]);
-  const businesses = body
+  const all = body
     .map(r => ({
       id: r[ix.place_id],
       score: Number(r[ix.score]) || 0,
@@ -116,16 +127,29 @@ function readProspects(csvText, audit) {
       why: r[ix.why],
       maps: r[ix.google_maps_url],
       link: r[ix.shop_check_link],
-      site: siteLine(audit, r[ix.place_id], r[ix.website])
-    }))
-    .filter(b => b.score >= LIST.minScore)
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-  return { total: body.length, businesses };
+      site: siteLine(audit, r[ix.place_id], r[ix.website]),
+      siteScore: siteScore(audit, r[ix.place_id], r[ix.website]),
+      hasWebsite: Boolean(r[ix.website])
+    }));
+
+  /* B first: a bad website is the more specific complaint, and a business
+     that qualifies for both sections belongs here. Sorted worst site first. */
+  const b = all
+    .filter(x => x.siteScore >= LIST.siteAuditMinScore)
+    .sort((x, y) => y.siteScore - x.siteScore || x.name.localeCompare(y.name));
+  const inB = new Set(b.map(x => x.id));
+
+  /* A: worth a call because there is nothing of theirs online at all. */
+  const a = all
+    .filter(x => x.score >= LIST.minScore && !x.hasWebsite && !inB.has(x.id))
+    .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name));
+
+  return { total: body.length, sections: { a, b } };
 }
 
 /* ---------- the page ---------- */
-function buildHtml(businesses) {
-  const payload = JSON.stringify(businesses).replace(/</g, '\\u003c');
+function buildHtml(sections) {
+  const payload = JSON.stringify(sections).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -296,6 +320,22 @@ function buildHtml(businesses) {
   .card.done .toggle .ring { border-color: var(--accent); background: var(--accent); }
   .card.done .toggle .ring svg { display: block; }
 
+  .tabs { display: flex; gap: 8px; margin: 12px 0 2px; }
+  .tab {
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: baseline; justify-content: center; gap: 8px;
+    min-height: 48px; padding: 8px 10px;
+    background: transparent; border: 2px solid var(--line); border-radius: var(--radius);
+    font-size: 15px; font-weight: 600; color: var(--muted);
+    cursor: pointer; text-align: center; touch-action: manipulation;
+  }
+  .tab:hover { background: var(--hover-fill); color: var(--ink); }
+  .tab .tablabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .tabcount { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tab[aria-selected="true"] {
+    border-color: var(--ink); background: var(--surface); color: var(--ink);
+  }
+
   .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 17px; }
   .foot { color: var(--muted); font-size: 14px; text-align: center; margin-top: 24px; line-height: 1.45; }
 </style>
@@ -309,6 +349,14 @@ function buildHtml(businesses) {
     </div>
     <h1 class="counts" id="counts">&nbsp;</h1>
     <div class="bar" aria-hidden="true"><div id="bar"></div></div>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-a" type="button" role="tab" aria-selected="true" aria-controls="list">
+        <span class="tablabel" id="label-a"></span><span class="tabcount" id="count-a"></span>
+      </button>
+      <button class="tab" id="tab-b" type="button" role="tab" aria-selected="false" aria-controls="list">
+        <span class="tablabel" id="label-b"></span><span class="tabcount" id="count-b"></span>
+      </button>
+    </div>
     <button class="hide" id="hide" type="button" aria-pressed="false">
       <span class="box"></span><span>Hide called</span>
     </button>
@@ -318,12 +366,15 @@ function buildHtml(businesses) {
 </div>
 
 <script>
-const BUSINESSES = ${payload};
+const SECTIONS = ${payload};
+const TITLES = ${JSON.stringify({ a: LIST.sectionATitle, b: LIST.sectionBTitle })};
 const SMS_PREFIX = ${JSON.stringify(LIST.smsPrefix)};
 const MIN_SCORE = ${LIST.minScore};
 const COPY = ${JSON.stringify({ copiedPhone: LIST.copiedPhone, copiedMessage: LIST.copiedMessage, copyFailed: LIST.copyFailed })};
 const CALLED_KEY = "shopCheckCalled.v1";
 const HIDE_KEY = "shopCheckHideCalled.v1";
+const TAB_KEY = "shopCheckTab.v1";
+const SITE_MIN = ${LIST.siteAuditMinScore};
 
 /* iPhones want "sms:NUMBER&body=", everything else "?body=" */
 function isApple() {
@@ -389,12 +440,19 @@ function writeStore(key, value) {
 
 const called = new Set(Array.isArray(readStore(CALLED_KEY, [])) ? readStore(CALLED_KEY, []) : []);
 let hiding = readStore(HIDE_KEY, false) === true;
+let active = readStore(TAB_KEY, "a") === "b" ? "b" : "a";
+/* Never open on an empty tab when the other one has work in it. */
+if (!SECTIONS[active].length && SECTIONS[active === "a" ? "b" : "a"].length) {
+  active = active === "a" ? "b" : "a";
+}
+const rows = () => SECTIONS[active];
 
 const listEl = document.getElementById("list");
 const countsEl = document.getElementById("counts");
 const barEl = document.getElementById("bar");
 const footEl = document.getElementById("foot");
 const hideEl = document.getElementById("hide");
+const tabEls = { a: document.getElementById("tab-a"), b: document.getElementById("tab-b") };
 const emptyEl = document.createElement("p");
 emptyEl.className = "empty";
 
@@ -431,17 +489,29 @@ function el(tag, attrs, kids) {
 }
 
 /* The counts come from the data, never from what is on screen, so
-   hiding cards cannot change them. */
+   hiding cards cannot change them. They follow the tab you are on; the
+   tab buttons carry each section's own "left to call" number. */
 function updateCounts() {
-  const total = BUSINESSES.length;
-  const done = BUSINESSES.filter(b => called.has(b.id)).length;
+  const list = rows();
+  const total = list.length;
+  const done = list.filter(b => called.has(b.id)).length;
   const left = total - done;
   countsEl.textContent = "";
   countsEl.appendChild(document.createTextNode(left + " to call, "));
   countsEl.appendChild(el("span", { class: "done", text: done + " done" }));
   barEl.style.width = total ? Math.round((done / total) * 100) + "%" : "0%";
 
-  if (!total) emptyEl.textContent = "No businesses in this list.";
+  for (const key of ["a", "b"]) {
+    const sect = SECTIONS[key];
+    const remaining = sect.filter(b => !called.has(b.id)).length;
+    document.getElementById("label-" + key).textContent = TITLES[key];
+    document.getElementById("count-" + key).textContent = String(remaining);
+    tabEls[key].setAttribute("aria-selected", key === active ? "true" : "false");
+    tabEls[key].setAttribute("aria-label",
+      TITLES[key] + ", " + remaining + " of " + sect.length + " left to call");
+  }
+
+  if (!total) emptyEl.textContent = "Nothing in this section.";
   else if (!left && hiding) emptyEl.textContent = "All done. Nothing left to call.";
   else emptyEl.textContent = "";
   emptyEl.hidden = !emptyEl.textContent;
@@ -453,16 +523,31 @@ function applyHiding() {
 }
 
 function card(b) {
-  const node = el("article", { class: "card" + (b.score >= 90 ? " hot" : "") });
+  /* On the "Bad website" tab the badge is the site score, because that is
+     what the section is ranked by; showing the prospect score there would
+     make the order look arbitrary. */
+  const onSiteTab = active === "b";
+  const shown = onSiteTab ? b.siteScore : b.score;
+  const urgent = onSiteTab ? b.siteScore >= 70 : b.score >= 90;
+  const node = el("article", { class: "card" + (urgent ? " hot" : "") });
   node.appendChild(el("div", { class: "top" }, [
     el("h2", { class: "name", text: b.name }),
-    el("span", { class: "badge" + (b.score >= 90 ? " high" : ""), text: String(b.score), title: "Shop Check score" })
+    el("span", {
+      class: "badge" + (urgent ? " high" : ""), text: String(shown),
+      title: onSiteTab ? "Website score" : "Shop Check score"
+    })
   ]));
   if (b.trade) node.appendChild(el("div", { class: "trade", text: b.trade }));
-  if (b.why) node.appendChild(el("p", { class: "why", text: b.why }));
-  if (b.site) node.appendChild(el("p", { class: "site" }, [
+
+  const whyEl = b.why ? el("p", { class: "why", text: b.why }) : null;
+  const siteEl = b.site ? el("p", { class: "site" }, [
     el("strong", { text: "Website: " }), b.site
-  ]));
+  ]) : null;
+  /* The headline problem comes first: the website on tab B, the reason
+     they are worth a call on tab A. */
+  for (const part of onSiteTab ? [siteEl, whyEl] : [whyEl, siteEl]) {
+    if (part) node.appendChild(part);
+  }
 
   if (b.dial) {
     if (FRAMED) {
@@ -532,23 +617,41 @@ document.getElementById("reset").addEventListener("click", () => {
   if (!confirm("Clear all " + called.size + " ticks?")) return;
   called.clear();
   writeStore(CALLED_KEY, []);
-  listEl.querySelectorAll(".card").forEach(c => c.classList.remove("done"));
-  listEl.querySelectorAll(".toggle").forEach(t => {
-    t.setAttribute("aria-pressed", "false");
-    t.lastChild.textContent = "Mark as called";
-  });
-  updateCounts();
+  paintList();
 });
+
+/* Ticks are keyed on the business, not the section, so a business that
+   somehow appeared twice would stay in step. Switching tab just redraws. */
+for (const key of ["a", "b"]) {
+  tabEls[key].addEventListener("click", () => {
+    if (active === key) return;
+    active = key;
+    writeStore(TAB_KEY, active);
+    paintList();
+  });
+}
+
+function footText() {
+  const base = active === "b"
+    ? "Websites scoring " + SITE_MIN + " and above, worst first."
+    : "No website at all, scoring " + MIN_SCORE + " and above, best prospects first.";
+  return base + " Ticks are saved on this device only."
+    + (FRAMED ? " Open this page in its own tab to tap straight through to your dialler." : "");
+}
+
+function paintList() {
+  listEl.textContent = "";
+  rows().forEach(b => listEl.appendChild(card(b)));
+  listEl.appendChild(emptyEl);
+  footEl.textContent = footText();
+  window.scrollTo(0, 0);
+  applyHiding();
+  updateCounts();
+}
 
 function render() {
   hideEl.querySelector(".box").appendChild(tick());
-  listEl.textContent = "";
-  BUSINESSES.forEach(b => listEl.appendChild(card(b)));
-  listEl.appendChild(emptyEl);
-  footEl.textContent = "Scoring " + MIN_SCORE + " and above, best prospects first. Ticks are saved on this device only."
-    + (FRAMED ? " Open this page in its own tab to tap straight through to your dialler." : "");
-  applyHiding();
-  updateCounts();
+  paintList();
 }
 
 render();
@@ -566,21 +669,20 @@ function main() {
   }
   const auditText = fs.existsSync(AUDIT_SRC) ? fs.readFileSync(AUDIT_SRC, 'utf8') : '';
   const audit = readAudit(auditText);
-  const { total, businesses } = readProspects(fs.readFileSync(SRC, 'utf8'), audit);
+  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit);
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.writeFileSync(DEST, buildHtml(businesses), 'utf8');
+  fs.writeFileSync(DEST, buildHtml(sections), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);
   console.log(`Read ${total} businesses from prospects.csv`);
-  console.log(`Kept ${businesses.length} scoring ${LIST.minScore} or above`);
+  console.log(`${LIST.sectionATitle}: ${sections.a.length} (no website, scoring ${LIST.minScore}+)`);
   if (!auditText) {
-    console.log('No site-audit.json, so no website lines. Run check-sites.js to add them.');
+    console.log(`${LIST.sectionBTitle}: 0 — no site-audit.json. Run check-sites.js to fill this tab.`);
   } else {
-    const withLine = businesses.filter(b => b.site).length;
-    console.log(`Website lines on ${withLine} of them (site score ${LIST.siteAuditMinScore}+)`);
+    console.log(`${LIST.sectionBTitle}: ${sections.b.length} (site score ${LIST.siteAuditMinScore}+)`);
   }
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, siteLine, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, siteLine, siteScore, readProspects, buildHtml, main };
 
 if (require.main === module) main();
