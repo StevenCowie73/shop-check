@@ -7,10 +7,14 @@
   "scripts": {
     "find": "node find-prospects.js",
     "calls": "node make-call-list.js",
-    "sites": "node check-sites.js"
+    "sites": "node check-sites.js",
+    "judge": "node judge-prospects.js"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0"
+  }
 }
