@@ -26,7 +26,12 @@ const LIST = {
   /* If out/site-audit.json exists (from check-sites.js), a business whose
      website scored this badly or worse gets a "Website: ..." line on its
      card. Businesses with no website are left alone. */
-  siteAuditMinScore: 40
+  siteAuditMinScore: 40,
+  /* Shown when the page is inside a frame, where tel: and sms: links go
+     nowhere, so the buttons copy instead. */
+  copiedPhone: "Copied — paste in your dialler",
+  copiedMessage: "Copied — paste into a text",
+  copyFailed: "Couldn't copy"
 };
 
 const OUT_DIR = process.env.SHOP_CHECK_OUT_DIR || path.join(__dirname, 'out');
@@ -246,7 +251,7 @@ function buildHtml(businesses) {
 
   .call {
     display: flex; align-items: center; justify-content: center; gap: 10px;
-    height: 60px; border-radius: var(--radius);
+    min-height: 60px; padding: 8px 14px; border-radius: var(--radius);
     background: var(--accent); color: var(--on-accent);
     font-size: 24px; font-weight: 700; letter-spacing: -0.01em;
     text-decoration: none; touch-action: manipulation;
@@ -254,13 +259,23 @@ function buildHtml(businesses) {
   .call:hover { background: var(--accent-hover); }
   .call:active { background: var(--accent-dark); }
   .call svg { width: 20px; height: 20px; flex: none; }
+  button.call {
+    appearance: none; -webkit-appearance: none;
+    border: 0; width: 100%; cursor: pointer; text-align: center;
+  }
+  /* the copied message is longer than a phone number, so it steps down */
+  .call.copied .calllabel { font-size: 17px; line-height: 1.25; }
 
   .links { display: flex; flex-wrap: wrap; gap: 20px; }
-  .links a {
+  .links a, .links button {
     font-size: 15px; font-weight: 600; color: var(--ink);
     text-decoration: underline; text-underline-offset: 3px; padding: 8px 0;
   }
-  .links a:hover { color: var(--accent); }
+  .links button {
+    appearance: none; -webkit-appearance: none;
+    background: none; border: 0; cursor: pointer; text-align: left;
+  }
+  .links a:hover, .links button:hover { color: var(--accent); }
 
   .toggle {
     display: flex; align-items: center; gap: 12px;
@@ -306,6 +321,7 @@ function buildHtml(businesses) {
 const BUSINESSES = ${payload};
 const SMS_PREFIX = ${JSON.stringify(LIST.smsPrefix)};
 const MIN_SCORE = ${LIST.minScore};
+const COPY = ${JSON.stringify({ copiedPhone: LIST.copiedPhone, copiedMessage: LIST.copiedMessage, copyFailed: LIST.copyFailed })};
 const CALLED_KEY = "shopCheckCalled.v1";
 const HIDE_KEY = "shopCheckHideCalled.v1";
 
@@ -316,6 +332,48 @@ function isApple() {
 }
 function smsLink(number, body) {
   return "sms:" + number + (isApple() ? "&" : "?") + "body=" + encodeURIComponent(body);
+}
+
+/* Inside a frame (the claude.ai artifact viewer, for one) a tel: or sms:
+   link never reaches the phone's dialler or messages app. There is no
+   reliable way to find out whether the link fired, so when we are framed
+   the buttons copy instead and say so. */
+function inFrame() {
+  try { return window.self !== window.top; } catch (e) { return true; }
+}
+const FRAMED = inFrame();
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* blocked in this frame; fall through */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+/* Swap a label to a message, then put it back. */
+function flash(el, node, message, original) {
+  if (node._flashTimer) clearTimeout(node._flashTimer);
+  el.textContent = message;
+  node.classList.add("copied");
+  node._flashTimer = setTimeout(() => {
+    el.textContent = original;
+    node.classList.remove("copied");
+    node._flashTimer = null;
+  }, 2000);
 }
 
 /* localStorage can be missing or blocked; never let that break the page */
@@ -407,15 +465,40 @@ function card(b) {
   ]));
 
   if (b.dial) {
-    node.appendChild(el("a", {
-      class: "call", href: "tel:" + b.dial,
-      "aria-label": "Call " + b.name + " on " + b.phone
-    }, [phoneIcon(), b.phone]));
+    if (FRAMED) {
+      const label = el("span", { class: "calllabel", text: b.phone });
+      const btn = el("button", {
+        class: "call", type: "button",
+        "aria-label": "Copy the number for " + b.name + ", " + b.phone
+      }, [phoneIcon(), label]);
+      btn.addEventListener("click", async () => {
+        const ok = await copyText(b.phone);
+        flash(label, btn, ok ? COPY.copiedPhone : COPY.copyFailed, b.phone);
+      });
+      node.appendChild(btn);
+    } else {
+      node.appendChild(el("a", {
+        class: "call", href: "tel:" + b.dial,
+        "aria-label": "Call " + b.name + " on " + b.phone
+      }, [phoneIcon(), b.phone]));
+    }
   }
 
   const links = el("div", { class: "links" });
   if (b.maps) links.appendChild(el("a", { href: b.maps, target: "_blank", rel: "noopener", text: "Google listing" }));
-  if (b.dial && b.link) links.appendChild(el("a", { href: smsLink(b.dial, SMS_PREFIX + b.link), text: "Send Shop Check link" }));
+  if (b.dial && b.link) {
+    const message = SMS_PREFIX + b.link;
+    if (FRAMED) {
+      const send = el("button", { type: "button", text: "Send Shop Check link" });
+      send.addEventListener("click", async () => {
+        const ok = await copyText(message);
+        flash(send, send, ok ? COPY.copiedMessage : COPY.copyFailed, "Send Shop Check link");
+      });
+      links.appendChild(send);
+    } else {
+      links.appendChild(el("a", { href: smsLink(b.dial, message), text: "Send Shop Check link" }));
+    }
+  }
   if (links.children.length) node.appendChild(links);
 
   const label = el("span", { text: "" });
@@ -462,7 +545,8 @@ function render() {
   listEl.textContent = "";
   BUSINESSES.forEach(b => listEl.appendChild(card(b)));
   listEl.appendChild(emptyEl);
-  footEl.textContent = "Scoring " + MIN_SCORE + " and above, best prospects first. Ticks are saved on this device only.";
+  footEl.textContent = "Scoring " + MIN_SCORE + " and above, best prospects first. Ticks are saved on this device only."
+    + (FRAMED ? " Open this page in its own tab to tap straight through to your dialler." : "");
   applyHiding();
   updateCounts();
 }
