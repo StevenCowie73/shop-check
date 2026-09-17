@@ -50,6 +50,7 @@ TASK: one line — what I asked you to do
 DONE: bullet list of what you actually did (files created/changed, commits, pushes, with the repo URL if relevant)
 NOT DONE / CHANGED: anything you skipped, did differently than asked, or assumed — say why
 HOW TO TEST: exact steps or URL to see it working
+DELIVERABLE: anything I have to act on — a walkthrough, steps to follow, a prompt to paste, a list to check, a decision to make. The content itself goes here, in full. "none" if there is nothing to act on
 KNOWN ISSUES: bugs, rough edges, or things you're unsure about
 QUESTIONS: anything you need decided before the next step
 === END ===
@@ -62,3 +63,11 @@ Rules:
   for tasks that failed or were abandoned partway.
 - Nothing follows the closing fence. The report is the last thing in the
   message.
+
+**Everything I need is inside the fence.** Anything I have to act on — a
+walkthrough, steps to follow, a prompt to paste, a list to check, a decision
+to make — goes in DELIVERABLE, in full, not in prose above the report.
+
+Prose above the fence is your own working notes. I may not read it. Nothing
+outside the fence may be load-bearing: if the report were the only thing I
+saw, I should still be able to do whatever comes next.
