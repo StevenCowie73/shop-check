@@ -28,115 +28,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const { loadEnvFile, redact, csvCell } = require('./find-prospects.js');
+const { loadEnvFile, scrub, sleep } = require('./lib/env.js');
+const { csvCell, toCsv: writeCsv } = require('./lib/csv.js');
 const { parseCsv } = require('./make-call-list.js');
-const { parseRobots, robotsVerdict, stripTags } = require('./check-sites.js');
+const places = require('./lib/places.js');
+const { fetchSiteText } = require('./lib/site-audit.js');
+const {
+  JUDGE, SYSTEM_PROMPT, JUDGMENT_TOOL,
+  reviewLines, ownerReplies, buildInput,
+  loadSdk, judgeRecord, pool
+} = require('./lib/judge.js');
 
 /* =====================================================================
-   1. EDIT ME.
+   JUDGE (the model and the limits), the prompt and the answer schema moved
+   to lib/judge.js, so the batch run and the single-business lookup ask the
+   same question. Edit them there.
    ===================================================================== */
-const JUDGE = {
-  model: 'claude-sonnet-4-6',
-  maxTokens: 2000,
-  concurrency: 4,            /* judgments in flight at once */
-  maxRetries: 6,             /* on top of the SDK's own retrying */
-  previewCount: 10,          /* how many to do before stopping for confirmation */
-
-  siteTextChars: 6000,       /* how much homepage text to send */
-  reviewsPerBusiness: 5,     /* Places returns at most 5 */
-  fetchTimeoutMs: 10000,
-  fetchDelayMs: 1200,        /* between homepage fetches */
-  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-
-  /* Cost estimates are arithmetic on these numbers, not quotes. CHECK BOTH
-     against current pricing before running the full set.
-     places: Place Details including reviews falls in the Places API (New)
-     Enterprise + Atmosphere SKU, priced per 1000 calls.
-     claude: claude-sonnet-4-6 input/output, per million tokens. */
-  pricing: {
-    placesPer1000Usd: 25.00,
-    claudeInputPerMTokUsd: 3.00,
-    claudeOutputPerMTokUsd: 15.00
-  }
-};
-
-/* The judging prompt. Everything it is allowed to say comes from the
-   input; there is nothing here inviting it to fill gaps. */
-const SYSTEM_PROMPT = `You are helping a one-person web services business decide which small trade
-businesses are worth a cold call. You are given what is publicly on a business's Google
-listing and, when they have one, the text of their website.
-
-Rules, in order of importance:
-
-1. Use only what is in the input. Never state a fact that is not there. If the input does
-   not settle a field, answer "unknown" or null rather than guessing. An inferred fact is
-   still a guess.
-2. Quote reviews only in short fragments, at most a dozen words, copied exactly.
-3. Everything you write may be read aloud to the business owner. Write nothing that would
-   embarrass the caller: no mockery, no speculation about their competence or finances, no
-   sales patter, no flattery, no exclamation marks.
-4. one_line is a plain spoken opening sentence, the kind one person says to another on the
-   phone. It should sound like somebody local who looked them up, not somebody working
-   through a list. It must be specific to this business and grounded in the input. No pitch,
-   no "I noticed you might be losing customers", no questions designed to corner them.
-
-5. one_line leads with the strongest evidence you actually have, in this order:
-   a. A responsiveness problem a customer described. Speak to the customer's experience
-      itself - somebody could not get a call back, somebody was waiting - not to the review
-      as a review. Never say "a reviewer said" or "your reviews mention".
-   b. Reviews being thin or old: only a handful, or nothing recent.
-   c. The website: missing, or the specific thing wrong with it.
-   Only lead with the website when there is genuinely nothing above it. Leading with a
-   missing website when you had something better is the wrong answer.
-
-6. When the evidence is thin and verdict_score is low, say so plainly instead of
-   manufacturing a hook. "I could not find much about you online beyond the listing" is a
-   better opener than a reason invented to have something to say.
-
-Scoring verdict_score, 0-100, is how likely this business is to actually buy:
-  - Small homeowner-facing operations showing signs they are missing calls or slow to reply
-    are the best fit. Score them high.
-  - Established firms whose customers are other contractors or businesses are the worst fit,
-    however bad their web presence looks. Score them low.
-  - Too little evidence means a middling score, not a high one.`;
-
-const JUDGMENT_TOOL = {
-  name: 'record_judgment',
-  description: 'Record the judgment of one business.',
-  strict: true,
-  input_schema: {
-    type: 'object',
-    properties: {
-      size: { type: 'string', enum: ['solo', 'small crew', 'established firm', 'unknown'] },
-      size_evidence: { type: 'string', description: 'The evidence that decided size. The single word unknown if there is none.' },
-      customer: { type: 'string', enum: ['homeowners', 'businesses/contractors', 'both', 'unknown'] },
-      owner_name: { type: 'string', description: "The owner's name if it appears anywhere in the input. The single word unknown if it does not." },
-      responsiveness_signals: {
-        type: 'array',
-        description: 'Review fragments suggesting missed calls, slow callbacks, unanswered messages or no-shows. Empty if there are none.',
-        items: {
-          type: 'object',
-          properties: {
-            quote: { type: 'string', description: 'A short fragment copied exactly from the review.' },
-            kind: { type: 'string', enum: ['missed call', 'slow callback', 'unanswered message', 'no-show', 'other'] }
-          },
-          required: ['quote', 'kind'],
-          additionalProperties: false
-        }
-      },
-      reputation: { type: 'string', enum: ['strong', 'mixed', 'weak', 'too few reviews'] },
-      best_pitch: { type: 'string', enum: ['missed calls', 'reviews', 'website', 'multiple', 'skip'] },
-      /* A strict tool schema rejects minimum/maximum, so the range lives in
-         the description and the value is clamped when it comes back. */
-      verdict_score: { type: 'integer', description: 'How likely this business is to actually buy, from 0 to 100.' },
-      one_line: { type: 'string', description: 'One plain spoken sentence to open a phone call with.' },
-      reasoning: { type: 'string', description: 'Two sentences at most.' }
-    },
-    required: ['size', 'size_evidence', 'customer', 'owner_name', 'responsiveness_signals',
-               'reputation', 'best_pitch', 'verdict_score', 'one_line', 'reasoning'],
-    additionalProperties: false
-  }
-};
 
 const OUT_DIR = process.env.SHOP_CHECK_OUT_DIR || path.join(__dirname, 'out');
 const SRC = path.join(OUT_DIR, 'prospects.csv');
@@ -146,26 +53,7 @@ const JUDGE_DIR = path.join(OUT_DIR, 'judgments');
 const DEST_CSV = path.join(OUT_DIR, 'judgments.csv');
 const DEST_JSON = path.join(OUT_DIR, 'judgments.json');
 
-const PLACES_URL = 'https://places.googleapis.com/v1/places/';
-/* Only documented Places API (New) v1 fields; an unknown one is a 400. */
-const DETAIL_FIELDS = [
-  'id', 'displayName', 'businessStatus', 'priceLevel', 'primaryTypeDisplayName',
-  'editorialSummary', 'reviews', 'rating', 'userRatingCount', 'websiteUri',
-  'nationalPhoneNumber', 'regularOpeningHours'
-].join(',');
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-/* find-prospects' redact only knows the Google key; nothing should be able
-   to print either of them. */
-function scrub(text) {
-  let s = redact(String(text));
-  const anth = process.env.ANTHROPIC_API_KEY;
-  if (anth) s = s.split(anth).join('[REDACTED_KEY]');
-  return s;
-}
-
-/* ---------- reading what the other two scripts wrote ---------- */
 function readProspects(csvText) {
   const rows = parseCsv(csvText);
   if (!rows.length) return [];
@@ -201,76 +89,9 @@ function readAudit() {
 /* ---------- Places details, cached per business ---------- */
 function enrichPath(id) { return path.join(ENRICH_DIR, id + '.json'); }
 
-async function getJson(url, headers, timeoutMs) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { headers, signal: ctrl.signal });
-    const text = await res.text();
-    let body = null;
-    try { body = JSON.parse(text); } catch (e) { /* not json */ }
-    return { status: res.status, body, text };
-  } finally { clearTimeout(timer); }
-}
 
-async function fetchDetails(id, apiKey) {
-  let wait = 1000;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    const { status, body, text } = await getJson(
-      PLACES_URL + encodeURIComponent(id),
-      { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': DETAIL_FIELDS },
-      JUDGE.fetchTimeoutMs
-    );
-    if (status === 200) return body;
-    /* A bad key or a malformed request will not improve by asking again. */
-    if (status === 400 || status === 401 || status === 403 || status === 404) {
-      throw new Error(scrub(`Places API ${status} for ${id}: ${text.slice(0, 300)}`));
-    }
-    if (attempt === 5) throw new Error(scrub(`Places API ${status} for ${id}, gave up after 5 tries`));
-    await sleep(wait);
-    wait *= 2;
-  }
-}
-
-/* ---------- the homepage, text only, no browser ---------- */
-async function fetchText(url, timeoutMs) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': JUDGE.userAgent, 'Accept': 'text/html,*/*' },
-      redirect: 'follow', signal: ctrl.signal
-    });
-    const body = await res.text();
-    return { status: res.status, body };
-  } finally { clearTimeout(timer); }
-}
-
-/* Same manners as check-sites.js: ask robots.txt first, one page, no retries. */
-async function fetchSiteText(website) {
-  let url;
-  try { url = new URL(website); } catch (e) { return { text: '', note: 'unreadable website address' }; }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return { text: '', note: 'not an http address' };
-  }
-  try {
-    const robots = await fetchText(url.origin + '/robots.txt', JUDGE.fetchTimeoutMs);
-    if (robots.status === 200) {
-      const verdict = robotsVerdict(parseRobots(robots.body), url.pathname || '/');
-      if (!verdict.allowed) return { text: '', note: 'robots.txt asks crawlers to stay away' };
-      if (verdict.crawlDelay) await sleep(Math.min(verdict.crawlDelay, 10) * 1000);
-    }
-  } catch (e) { /* no robots.txt we could read; carry on as check-sites does */ }
-
-  try {
-    const page = await fetchText(url.href, JUDGE.fetchTimeoutMs);
-    if (page.status >= 400) return { text: '', note: `the server answered ${page.status}` };
-    const text = stripTags(page.body).replace(/\s+/g, ' ').trim();
-    return { text: text.slice(0, JUDGE.siteTextChars), note: text ? '' : 'the page had no readable text' };
-  } catch (e) {
-    return { text: '', note: 'could not be reached: ' + String(e && e.message || e).slice(0, 80) };
-  }
-}
+/* the shared client does the calling and the backing off */
+const fetchDetails = (id, apiKey) => places.placeDetails(apiKey, id, { timeoutMs: JUDGE.fetchTimeoutMs });
 
 async function gatherOne(business, apiKey, audit) {
   const file = enrichPath(business.id);
@@ -299,189 +120,23 @@ async function gatherOne(business, apiKey, audit) {
 }
 
 /* ---------- what Claude is shown ---------- */
-function reviewLines(details) {
-  const reviews = (details && details.reviews) || [];
-  return reviews.slice(0, JUDGE.reviewsPerBusiness).map(r => ({
-    rating: r.rating,
-    when: r.relativePublishTimeDescription || r.publishTime || '',
-    author: (r.authorAttribution && r.authorAttribution.displayName) || '',
-    text: (r.originalText && r.originalText.text) || (r.text && r.text.text) || ''
-  })).filter(r => r.text);
-}
 
-/* The Places API (New) does not return the owner's replies to reviews.
-   If a field ever appears, it gets picked up here rather than silently. */
-function ownerReplies(details) {
-  const out = [];
-  for (const r of (details && details.reviews) || []) {
-    const reply = r.reply || r.ownerResponse || r.authorReply;
-    const text = reply && (reply.text && reply.text.text || reply.text);
-    if (text) out.push({ to: (r.originalText && r.originalText.text || '').slice(0, 80), text });
-  }
-  return out;
-}
-
-function buildInput(record) {
-  const d = record.details || {};
-  const a = record.audit;
-  const reviews = reviewLines(d);
-  const replies = ownerReplies(d);
-  const lines = [];
-  lines.push(`Name: ${record.prospect.name}`);
-  lines.push(`Trade as Google lists it: ${d.primaryTypeDisplayName && d.primaryTypeDisplayName.text || record.prospect.trade || 'unknown'}`);
-  lines.push(`Business status: ${d.businessStatus || 'unknown'}`);
-  lines.push(`Rating: ${d.rating != null ? d.rating : 'none'} from ${d.userRatingCount != null ? d.userRatingCount : 0} reviews`);
-  if (d.priceLevel) lines.push(`Price level: ${d.priceLevel}`);
-  if (d.editorialSummary && d.editorialSummary.text) lines.push(`Google's summary: ${d.editorialSummary.text}`);
-  if (d.regularOpeningHours && d.regularOpeningHours.weekdayDescriptions) {
-    lines.push(`Opening hours: ${d.regularOpeningHours.weekdayDescriptions.join('; ')}`);
-  }
-  lines.push(`What the finder flagged: ${record.prospect.why || 'nothing'}`);
-
-  lines.push('');
-  if (reviews.length) {
-    lines.push(`Reviews (${reviews.length} of ${d.userRatingCount || reviews.length}):`);
-    for (const r of reviews) lines.push(`- ${r.rating} stars, ${r.when}, ${r.author}: ${r.text}`);
-  } else {
-    lines.push('Reviews: none returned.');
-  }
-
-  lines.push('');
-  if (replies.length) {
-    lines.push('Owner replies to reviews:');
-    for (const r of replies) lines.push(`- ${r.text}`);
-  } else {
-    lines.push('Owner replies to reviews: not available from this source.');
-  }
-
-  lines.push('');
-  if (a) {
-    lines.push(`Website audit: ${a.website}`);
-    lines.push(`- needs-replacing score ${a.siteScore} out of 100: ${a.whatsWrong || 'nothing recorded'}`);
-    if (a.title) lines.push(`- page title: ${a.title}`);
-  } else if (record.prospect.website) {
-    lines.push(`Website: ${record.prospect.website} (not audited)`);
-  } else {
-    lines.push('Website: none listed.');
-  }
-
-  lines.push('');
-  if (record.siteText) {
-    lines.push('Text of their homepage:');
-    lines.push(record.siteText);
-  } else {
-    lines.push(`Text of their homepage: ${record.siteTextNote || 'not available'}.`);
-  }
-  return lines.join('\n');
-}
-
-/* ---------- judging ---------- */
 function judgePath(id) { return path.join(JUDGE_DIR, id + '.json'); }
 
-/* Now and then a model writes its own tool-call delimiters into a string
-   field instead of leaving it empty. That is not a judgment, so it is
-   thrown away and asked again rather than cached. */
-const SCAFFOLDING = /<\/?antml|<\/?parameter\b|<\/?function_calls\b|<\/?invoke\b/i;
-
-function leaked(judgment) {
-  const bad = [];
-  const check = (label, value) => {
-    if (typeof value === 'string' && SCAFFOLDING.test(value)) bad.push(label);
-  };
-  check('owner_name', judgment.owner_name);
-  check('size_evidence', judgment.size_evidence);
-  check('one_line', judgment.one_line);
-  check('reasoning', judgment.reasoning);
-  for (const s of judgment.responsiveness_signals || []) check('responsiveness_signals', s.quote);
-  return bad;
-}
-
-/* "unknown" is the answer we asked for when there is nothing; null is what
-   we store, so the CSV column is empty rather than saying unknown. */
-function orNull(value) {
-  const s = String(value == null ? '' : value).trim();
-  return !s || s.toLowerCase() === 'unknown' || s.toLowerCase() === 'none' ? null : s;
-}
-
-function loadSdk() {
-  try { return require('@anthropic-ai/sdk'); }
-  catch (e) {
-    throw new Error(
-      'The Anthropic SDK is not installed. From finder/, run:  npm install\n' +
-      '(judge-prospects.js is the only part of finder/ with a dependency.)'
-    );
-  }
-}
-
+/* The API call, the leak check and the normalising all live in
+   lib/judge.js. This is only the cache around them. */
 async function judgeOne(client, Anthropic, record) {
   const file = judgePath(record.placeId);
   if (fs.existsSync(file)) {
     try { return { judgment: JSON.parse(fs.readFileSync(file, 'utf8')), cached: true }; }
     catch (e) { /* unreadable cache, ask again */ }
   }
-  const input = buildInput(record);
-  let wait = 2000;
-  for (let attempt = 1; attempt <= JUDGE.maxRetries; attempt++) {
-    try {
-      const res = await client.messages.create({
-        model: JUDGE.model,
-        max_tokens: JUDGE.maxTokens,
-        system: SYSTEM_PROMPT,
-        tools: [JUDGMENT_TOOL],
-        tool_choice: { type: 'tool', name: 'record_judgment' },
-        messages: [{ role: 'user', content: input }]
-      });
-      const call = res.content.find(b => b.type === 'tool_use');
-      if (!call) throw new Error('Claude returned no judgment for ' + record.placeId);
-      const spoiled = leaked(call.input);
-      if (spoiled.length) {
-        throw Object.assign(
-          new Error(`the model wrote tool-call markup into ${spoiled.join(', ')}`),
-          { retryable: true }
-        );
-      }
-      const judgment = {
-        placeId: record.placeId,
-        judgedAt: new Date().toISOString(),
-        model: JUDGE.model,
-        usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
-        ...call.input,
-        /* the schema asks for the word "unknown"; null is what we store */
-        owner_name: orNull(call.input.owner_name),
-        size_evidence: orNull(call.input.size_evidence) || '',
-        verdict_score: Math.max(0, Math.min(100, Number(call.input.verdict_score) || 0))
-      };
-      fs.mkdirSync(JUDGE_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(judgment, null, 2), 'utf8');
-      return { judgment, cached: false };
-    } catch (err) {
-      const retryable = err.retryable
-        || err instanceof Anthropic.RateLimitError
-        || (err instanceof Anthropic.APIError && err.status >= 500)
-        || err instanceof Anthropic.APIConnectionError;
-      if (!retryable || attempt === JUDGE.maxRetries) throw err;
-      await sleep(wait);
-      wait = Math.min(wait * 2, 60000);
-    }
-  }
+  const judgment = await judgeRecord(client, Anthropic, record);
+  fs.mkdirSync(JUDGE_DIR, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(judgment, null, 2), 'utf8');
+  return { judgment, cached: false };
 }
 
-/* Small pool so we are not firing 333 requests at once. */
-async function pool(items, limit, worker) {
-  const results = new Array(items.length);
-  let next = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) return;
-      results[i] = await worker(items[i], i);
-    }
-  });
-  await Promise.all(runners);
-  return results;
-}
-
-/* ---------- output ---------- */
 const CSV_COLUMNS = [
   ['verdict_score', r => r.verdict_score],
   ['prospect_score', r => r.prospectScore],
@@ -498,11 +153,7 @@ const CSV_COLUMNS = [
   ['reasoning', r => r.reasoning]
 ];
 
-function toCsv(rows) {
-  const lines = [CSV_COLUMNS.map(c => csvCell(c[0])).join(',')];
-  for (const r of rows) lines.push(CSV_COLUMNS.map(c => csvCell(c[1](r))).join(','));
-  return '﻿' + lines.join('\r\n') + '\r\n';
-}
+const toCsv = rows => writeCsv(CSV_COLUMNS, rows);
 
 function estimateChars(records) {
   return records.reduce((n, r) => n + buildInput(r).length, 0);
@@ -580,6 +231,7 @@ function parseArgs(argv) {
   }
   return opts;
 }
+
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));

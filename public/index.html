@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ground: #F4EFE6; --surface: #FBF8F2; --callout: #F3E7D3;
+    --ink: #1C1917; --body: #3D3833; --muted: #5C5650;
+    --line: #CFC6B6; --accent: #C4501B; --accent-hover: #A94314;
+    --accent-dark: #8F3810; --on-accent: #FFF7EE; --hover: #EFE7D9;
+    --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  /* an author display rule outranks the UA sheet, so [hidden] needs saying */
+  [hidden] { display: none !important; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font); font-size: 19px; line-height: 1.5;
+    background: var(--ground); color: var(--ink);
+    -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%;
+  }
+  h1, h2, h3, p { margin: 0; }
+  :focus { outline: none; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 24px 64px; }
+  .brand {
+    font-size: 14px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--muted); margin-bottom: 18px;
+  }
+
+  form { display: flex; flex-wrap: wrap; gap: 12px; }
+  input[type=text], input[type=password] {
+    flex: 1 1 320px; min-width: 0;
+    font-family: inherit; font-size: 21px; padding: 16px 18px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--line); border-radius: var(--radius);
+  }
+  input::placeholder { color: var(--muted); opacity: 0.8; }
+  button.go {
+    flex: 0 0 auto; font-family: inherit; font-size: 21px; font-weight: 700;
+    padding: 16px 30px; min-height: 60px; cursor: pointer;
+    background: var(--accent); color: var(--on-accent);
+    border: 0; border-radius: var(--radius); touch-action: manipulation;
+  }
+  button.go:hover { background: var(--accent-hover); }
+  button.go[disabled] { opacity: 0.55; cursor: default; }
+  .hint { font-size: 15px; color: var(--muted); margin-top: 10px; }
+
+  .steps { margin: 26px 0 0; padding: 0; list-style: none; }
+  .steps li {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 18px; color: var(--muted); padding: 5px 0;
+  }
+  .steps li .dot {
+    width: 22px; height: 22px; flex: none; border-radius: 50%;
+    border: 2px solid var(--line);
+  }
+  .steps li.now { color: var(--ink); font-weight: 600; }
+  .steps li.now .dot { border-color: var(--accent); border-right-color: transparent; animation: spin 0.8s linear infinite; }
+  .steps li.done .dot { border-color: var(--accent); background: var(--accent); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .steps li.now .dot { animation: none; } }
+
+  .card {
+    background: var(--surface); border: 2px solid var(--line);
+    border-radius: var(--radius); padding: 26px; margin-top: 26px;
+  }
+  .card.none { border-color: var(--accent); }
+  .name { font-size: 31px; font-weight: 700; line-height: 1.15; text-wrap: pretty; }
+  .sub { font-size: 16px; font-weight: 700; text-transform: uppercase;
+         letter-spacing: 0.06em; color: var(--muted); margin-top: 6px; }
+
+  .scores { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
+  .score {
+    flex: 1 1 150px; background: var(--callout); border-radius: 8px; padding: 12px 14px;
+  }
+  .score b { display: block; font-size: 30px; line-height: 1.1; color: var(--accent-dark); }
+  .score span { font-size: 14px; font-weight: 600; text-transform: uppercase;
+                letter-spacing: 0.05em; color: var(--muted); }
+
+  h3 {
+    font-size: 15px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted);
+    margin: 26px 0 10px; padding-top: 18px; border-top: 1px solid var(--line);
+  }
+  dl { margin: 0; display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 8px 18px; }
+  dt { font-weight: 600; color: var(--muted); font-size: 17px; }
+  dd { margin: 0; font-size: 18px; text-wrap: pretty; }
+
+  .unknown { font-style: italic; color: var(--muted); }
+  .unknown::after { content: " — not established"; font-size: 14px; font-style: normal; opacity: 0.75; }
+
+  .opener {
+    font-size: 23px; line-height: 1.45; background: var(--callout);
+    border-radius: 8px; padding: 18px 20px; margin: 4px 0 0; text-wrap: pretty;
+  }
+  .quote { font-size: 17px; line-height: 1.45; margin: 0 0 10px; padding-left: 14px;
+           border-left: 3px solid var(--accent); color: var(--body); }
+  .quote em { font-style: normal; font-weight: 700; text-transform: uppercase;
+              font-size: 13px; letter-spacing: 0.06em; color: var(--accent-dark); display: block; }
+  .ev { font-size: 15px; color: var(--muted); margin-top: 8px; }
+
+  .links { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
+  .links a { font-size: 17px; font-weight: 600; color: var(--ink);
+             text-decoration: underline; text-underline-offset: 3px; }
+  button.copy {
+    margin-top: 22px; width: 100%; min-height: 58px; cursor: pointer;
+    font-family: inherit; font-size: 19px; font-weight: 600;
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--ink); border-radius: var(--radius);
+  }
+  button.copy:hover { background: var(--hover); }
+  .cost { font-size: 13px; color: var(--muted); margin-top: 18px; text-align: center; }
+  .error { color: var(--accent-dark); font-size: 18px; margin-top: 20px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Signal</div>
+
+  <form id="gate" hidden>
+    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" enterkeyhint="go">
+    <button class="go" type="submit">Unlock</button>
+  </form>
+
+  <form id="search" hidden>
+    <input type="text" id="q" placeholder="Business name, town" autocomplete="off"
+           autocapitalize="words" enterkeyhint="search">
+    <button class="go" type="submit" id="goBtn">Look up</button>
+  </form>
+  <p class="hint" id="hint" hidden>One business at a time. Takes about half a minute.</p>
+
+  <ul class="steps" id="steps" hidden></ul>
+  <p class="error" id="error" hidden></p>
+  <div id="out"></div>
+  <p class="cost" id="cost" hidden></p>
+</div>
+
+<script>
+const KEY = "signal.pw";
+const gate = document.getElementById("gate");
+const search = document.getElementById("search");
+const hint = document.getElementById("hint");
+const stepsEl = document.getElementById("steps");
+const errEl = document.getElementById("error");
+const out = document.getElementById("out");
+const costEl = document.getElementById("cost");
+const goBtn = document.getElementById("goBtn");
+
+let pw = "";
+try { pw = sessionStorage.getItem(KEY) || ""; } catch (e) { pw = ""; }
+let sessionCost = 0;
+
+function showGate(msg) {
+  gate.hidden = false; search.hidden = true; hint.hidden = true;
+  if (msg) { errEl.textContent = msg; errEl.hidden = false; }
+  document.getElementById("pw").focus();
+}
+function showSearch() {
+  gate.hidden = true; search.hidden = false; hint.hidden = false;
+  errEl.hidden = true;
+}
+pw ? showSearch() : showGate();
+
+gate.addEventListener("submit", e => {
+  e.preventDefault();
+  pw = document.getElementById("pw").value;
+  try { sessionStorage.setItem(KEY, pw); } catch (e) {}
+  showSearch();
+  document.getElementById("q").focus();
+});
+
+function el(tag, attrs, kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v;
+    else n.setAttribute(k, v);
+  }
+  (kids || []).forEach(c => n.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+  return n;
+}
+/* A value nobody established is shown as unknown, never blank and never
+   filled in with something plausible. */
+function val(v) {
+  if (v === null || v === undefined || v === "" || v === "unknown") {
+    return el("span", { class: "unknown", text: "unknown" });
+  }
+  return document.createTextNode(String(v));
+}
+function rows(pairs) {
+  const dl = el("dl");
+  for (const [k, v] of pairs) {
+    if (v === undefined) continue;
+    dl.appendChild(el("dt", { text: k }));
+    const dd = el("dd");
+    dd.appendChild(v instanceof Node ? v : val(v));
+    dl.appendChild(dd);
+  }
+  return dl;
+}
+function section(title, node) {
+  const f = document.createDocumentFragment();
+  f.appendChild(el("h3", { text: title }));
+  f.appendChild(node);
+  return f;
+}
+
+function renderSteps(steps, activeKey, finished) {
+  stepsEl.textContent = "";
+  stepsEl.hidden = false;
+  let passed = finished;
+  for (const s of steps) {
+    const li = el("li", {}, [el("span", { class: "dot" }), s.label]);
+    if (finished) li.className = "done";
+    else if (s.key === activeKey) { li.className = "now"; passed = true; }
+    else if (!passed) li.className = "done";
+    stepsEl.appendChild(li);
+  }
+}
+
+function renderNotFound(r) {
+  const card = el("div", { class: "card none" });
+  card.appendChild(el("h2", { class: "name", text: r.headline }));
+  card.appendChild(el("div", { class: "sub", text: "searched: " + r.query }));
+  card.appendChild(section("What this means", (() => {
+    const d = document.createDocumentFragment();
+    d.appendChild(el("p", { text: r.explanation }));
+    d.appendChild(el("p", { style: "margin-top:12px", text: r.whatItMeans }));
+    return d;
+  })()));
+  const ev = el("div");
+  r.evidence.forEach(e => ev.appendChild(el("p", { class: "ev", text: e })));
+  card.appendChild(section("Evidence", ev));
+  card.appendChild(copyButton(r.plain));
+  return card;
+}
+
+function renderFound(r) {
+  const L = r.listing, a = r.audit, j = r.judgment;
+  const card = el("div", { class: "card" });
+  card.appendChild(el("h2", { class: "name", text: L.name }));
+  card.appendChild(el("div", { class: "sub" }, [val(L.trade)]));
+
+  const scores = el("div", { class: "scores" });
+  const box = (n, label) => el("div", { class: "score" }, [
+    el("b", { text: n === null ? "—" : String(n) }), el("span", { text: label })
+  ]);
+  scores.appendChild(box(j ? j.verdict_score : null, "likely to buy"));
+  scores.appendChild(box(L.prospectScore, "shop check score"));
+  scores.appendChild(box(a ? a.siteScore : null, a ? "website needs work" : "no website"));
+  card.appendChild(scores);
+
+  card.appendChild(section("The listing", rows([
+    ["Address", L.address],
+    ["Status", L.businessStatus],
+    ["Rating", L.rating === null
+      ? val(null)
+      : document.createTextNode(L.rating + " from " + L.reviewCount + " review" + (L.reviewCount === 1 ? "" : "s"))],
+    ["Website", L.website ? el("a", { href: L.website, target: "_blank", rel: "noopener noreferrer", text: L.website }) : document.createTextNode("none listed")],
+    ["Hours", L.hours ? document.createTextNode(L.hours.join(" · ")) : val(null)],
+    ["Flagged", L.prospectWhy]
+  ])));
+
+  const auditNode = el("div");
+  if (!a) {
+    auditNode.appendChild(el("p", { text: "No website listed, so there is nothing to audit." }));
+  } else {
+    auditNode.appendChild(rows([
+      ["Score", a.siteScore + " / 100"],
+      ["What's wrong", a.whatsWrong || ""],
+      ["Loaded", a.loads ? "yes" + (a.status ? " (HTTP " + a.status + ")" : "") : "no" + (a.problem ? " — " + a.problem : "")],
+      ["Built for phones", a.loads ? (a.viewport ? "yes" : "no") : undefined],
+      ["Phone on the page", a.loads ? (a.phoneOnPage ? "yes" : "no") : undefined],
+      ["Newest date on it", a.loads ? (a.newestYear || null) : undefined]
+    ]));
+  }
+  card.appendChild(section("Their website", auditNode));
+
+  const jn = el("div");
+  if (!j) {
+    jn.appendChild(el("p", { text: "The judgment did not run" + (r.judgeError ? " — " + r.judgeError : "") + "." }));
+  } else {
+    jn.appendChild(rows([
+      ["Size", j.size],
+      ["Evidence", j.size_evidence],
+      ["Customers", j.customer],
+      ["Owner", j.owner_name],
+      ["Reputation", j.reputation],
+      ["Best pitch", j.best_pitch]
+    ]));
+    jn.appendChild(el("h3", { text: "What to open with" }));
+    jn.appendChild(el("p", { class: "opener", text: j.one_line }));
+    jn.appendChild(el("p", { class: "ev", text: j.reasoning }));
+
+    jn.appendChild(el("h3", { text: "Why — quoted from their reviews" }));
+    if (j.responsiveness_signals && j.responsiveness_signals.length) {
+      for (const s of j.responsiveness_signals) {
+        jn.appendChild(el("p", { class: "quote" }, [
+          el("em", { text: s.kind }), '"' + s.quote + '"'
+        ]));
+      }
+    } else {
+      jn.appendChild(el("p", { class: "ev", text: "No responsiveness problems appear in the reviews that were read." }));
+    }
+  }
+  card.appendChild(section("The judgment", jn));
+
+  const ev = el("div");
+  ev.appendChild(rows([
+    ["Reviews read", String(r.evidence.reviewsRead.length)],
+    ["Owner replies", document.createTextNode("not available from the Places API")],
+    ["Homepage text", r.evidence.siteTextChars
+      ? r.evidence.siteTextChars + " characters read"
+      : (r.evidence.siteTextNote || "none")]
+  ]));
+  card.appendChild(section("What this rests on", ev));
+
+  const links = el("div", { class: "links" });
+  links.appendChild(el("a", { href: L.googleMapsUrl, target: "_blank", rel: "noopener noreferrer", text: "Google listing" }));
+  links.appendChild(el("a", { href: L.shopCheckLink, target: "_blank", rel: "noopener noreferrer", text: "Their Shop Check link" }));
+  card.appendChild(links);
+  card.appendChild(copyButton(r.plain));
+  return card;
+}
+
+function copyButton(text) {
+  const b = el("button", { class: "copy", type: "button", text: "Copy as text" });
+  b.addEventListener("click", async () => {
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text); ok = true;
+      }
+    } catch (e) {}
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+        document.body.appendChild(ta); ta.select();
+        ta.setSelectionRange(0, text.length);
+        ok = document.execCommand("copy"); ta.remove();
+      } catch (e) { ok = false; }
+    }
+    b.textContent = ok ? "Copied" : "Couldn't copy";
+    setTimeout(() => { b.textContent = "Copy as text"; }, 2000);
+  });
+  return b;
+}
+
+function money(n) { return "$" + n.toFixed(n < 0.1 ? 4 : 2); }
+
+search.addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim();
+  if (!q) return;
+  out.textContent = ""; errEl.hidden = true; costEl.hidden = true;
+  goBtn.disabled = true; goBtn.textContent = "Working";
+
+  let steps = [];
+  try {
+    const res = await fetch("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-lookup-password": pw },
+      body: JSON.stringify({ query: q })
+    });
+    if (res.status === 401) {
+      try { sessionStorage.removeItem(KEY); } catch (e) {}
+      pw = ""; stepsEl.hidden = true; showGate("Wrong password.");
+      return;
+    }
+    if (!res.ok || !res.body) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error || ("The server answered " + res.status + "."));
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop();
+      for (const part of parts) {
+        const evLine = /^event: (.+)$/m.exec(part);
+        const dataLine = /^data: (.+)$/m.exec(part);
+        if (!evLine || !dataLine) continue;
+        const name = evLine[1];
+        const data = JSON.parse(dataLine[1]);
+        if (name === "steps") { steps = data.steps; renderSteps(steps, null, false); }
+        else if (name === "progress") renderSteps(steps, data.step, false);
+        else if (name === "failed") throw new Error(data.error);
+        else if (name === "result") {
+          renderSteps(steps, null, true);
+          stepsEl.hidden = true;
+          out.appendChild(data.found ? renderFound(data) : renderNotFound(data));
+          sessionCost += data.cost.usd;
+          costEl.textContent =
+            "this lookup " + money(data.cost.usd) + " · session " + money(sessionCost) +
+            " · " + data.cost.searches + " search, " + data.cost.details + " details, " +
+            data.cost.inputTokens + " in / " + data.cost.outputTokens + " out tokens";
+          costEl.hidden = false;
+        }
+      }
+    }
+  } catch (err) {
+    stepsEl.hidden = true;
+    errEl.textContent = String(err.message || err);
+    errEl.hidden = false;
+  } finally {
+    goBtn.disabled = false; goBtn.textContent = "Look up";
+  }
+});
+</script>
+</body>
+</html>

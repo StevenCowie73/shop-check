@@ -14,7 +14,12 @@ It only builds a list.
 - A Google Cloud project with **Places API (New)** enabled and billing on.
 - An API key from that project.
 
-No `npm install` is needed. The script has no dependencies.
+`find-prospects.js`, `check-sites.js` and `make-call-list.js` have no
+dependencies and need no `npm install`. `judge-prospects.js` and the Signal
+lookup use the Anthropic SDK, so run `npm install` in `finder/` before those.
+
+The parts all four share — scoring, the website audit, the judgment prompt —
+live in `finder/lib/`. Edit them there, not in the scripts.
 
 ## Setting the key
 

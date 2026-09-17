@@ -1,0 +1,10 @@
+{
+  "name": "signal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-business lookup for Shop Check: one box, one card.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0"
+  },
+  "engines": { "node": ">=18" }
+}
