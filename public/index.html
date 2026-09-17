@@ -109,6 +109,18 @@
               font-size: 13px; letter-spacing: 0.06em; color: var(--accent-dark); display: block; }
   .ev { font-size: 15px; color: var(--muted); margin-top: 8px; }
 
+  .others { display: flex; flex-direction: column; gap: 10px; }
+  .other {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    font-family: inherit; font-size: 18px; padding: 14px 16px; min-height: 58px;
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--line); border-radius: 8px; touch-action: manipulation;
+  }
+  .other:hover { background: var(--hover); border-color: var(--ink); }
+  .other b { display: block; font-size: 19px; }
+  .other span { font-size: 15px; color: var(--muted); }
+  .other[disabled] { opacity: 0.55; cursor: default; }
+
   .links { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
   .links a { font-size: 17px; font-weight: 600; color: var(--ink);
              text-decoration: underline; text-underline-offset: 3px; }
@@ -159,6 +171,8 @@ const goBtn = document.getElementById("goBtn");
 let pw = "";
 try { pw = sessionStorage.getItem(KEY) || ""; } catch (e) { pw = ""; }
 let sessionCost = 0;
+let lastQuery = "";      /* the words typed, kept so a pick can re-use them */
+let lastMatches = [];    /* every business the search saw, this one included */
 
 function showGate(msg) {
   gate.hidden = false; search.hidden = true; hint.hidden = true;
@@ -326,6 +340,22 @@ function renderFound(r) {
   ]));
   card.appendChild(section("What this rests on", ev));
 
+  /* Getting the wrong company in front of someone with no way back is the
+     failure that matters, so the other matches stay one tap away. */
+  const others = lastMatches.filter(m => m.placeId !== L.placeId);
+  if (others.length) {
+    const list = el("div", { class: "others" });
+    for (const m of others) {
+      const b = el("button", { class: "other", type: "button" }, [
+        el("b", { text: m.name || "unnamed listing" }),
+        el("span", { text: m.address || "no address listed" })
+      ]);
+      b.addEventListener("click", () => run(lastQuery, m.placeId));
+      list.appendChild(b);
+    }
+    card.appendChild(section("Not the right one? " + others.length + " other match" + (others.length === 1 ? "" : "es"), list));
+  }
+
   const links = el("div", { class: "links" });
   links.appendChild(el("a", { href: L.googleMapsUrl, target: "_blank", rel: "noopener noreferrer", text: "Google listing" }));
   links.appendChild(el("a", { href: L.shopCheckLink, target: "_blank", rel: "noopener noreferrer", text: "Their Shop Check link" }));
@@ -361,11 +391,16 @@ function copyButton(text) {
 
 function money(n) { return "$" + n.toFixed(n < 0.1 ? 4 : 2); }
 
-search.addEventListener("submit", async e => {
+search.addEventListener("submit", e => {
   e.preventDefault();
   const q = document.getElementById("q").value.trim();
-  if (!q) return;
+  if (q) run(q, null);
+});
+
+async function run(q, placeId) {
+  lastQuery = q;
   out.textContent = ""; errEl.hidden = true; costEl.hidden = true;
+  window.scrollTo({ top: 0, behavior: "smooth" });
   goBtn.disabled = true; goBtn.textContent = "Working";
 
   let steps = [];
@@ -373,7 +408,7 @@ search.addEventListener("submit", async e => {
     const res = await fetch("/api/lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-lookup-password": pw },
-      body: JSON.stringify({ query: q })
+      body: JSON.stringify(placeId ? { query: q, placeId } : { query: q })
     });
     if (res.status === 401) {
       try { sessionStorage.removeItem(KEY); } catch (e) {}
@@ -400,12 +435,18 @@ search.addEventListener("submit", async e => {
         if (!evLine || !dataLine) continue;
         const name = evLine[1];
         const data = JSON.parse(dataLine[1]);
-        if (name === "steps") { steps = data.steps; renderSteps(steps, null, false); }
+        if (name === "steps") {
+          steps = placeId ? data.steps.filter(s => s.key !== "search") : data.steps;
+          renderSteps(steps, null, false);
+        }
         else if (name === "progress") renderSteps(steps, data.step, false);
         else if (name === "failed") throw new Error(data.error);
         else if (name === "result") {
           renderSteps(steps, null, true);
           stepsEl.hidden = true;
+          /* A fresh search replaces the candidate list; a pick keeps it,
+             so you can go back to the one you came from. */
+          if (!placeId) lastMatches = data.matches || [];
           out.appendChild(data.found ? renderFound(data) : renderNotFound(data));
           sessionCost += data.cost.usd;
           costEl.textContent =
@@ -423,7 +464,7 @@ search.addEventListener("submit", async e => {
   } finally {
     goBtn.disabled = false; goBtn.textContent = "Look up";
   }
-});
+}
 </script>
 </body>
 </html>

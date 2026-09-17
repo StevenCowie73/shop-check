@@ -60,21 +60,27 @@ const UNKNOWN = 'unknown';
 const orUnknown = v => (v === null || v === undefined || v === '' ? UNKNOWN : v);
 
 async function lookupOne(query, opts) {
-  const { placesKey, anthropicKey, onProgress = () => {} } = opts;
+  const { placesKey, anthropicKey, placeId = null, onProgress = () => {} } = opts;
   const say = (key, label) => onProgress({ step: key, label, steps: STEPS });
-  const startCounts = places.counts();
   let searches = 0, details = 0;
+  let hits = [];
 
   /* ---- 1. find it ---- */
-  say('search', 'finding the business');
-  const found = await places.searchText(placesKey, {
-    textQuery: query,
-    pageSize: 5,
-    fieldMask: LOOKUP_SEARCH_FIELDS,
-    maxRetries: 2
-  });
-  searches++;
-  const hits = Array.isArray(found.places) ? found.places : [];
+  if (placeId) {
+    /* Picking a different match from the ones already on screen. We know
+       which business is wanted, so there is nothing to search for. */
+    hits = [{ id: placeId }];
+  } else {
+    say('search', 'finding the business');
+    const found = await places.searchText(placesKey, {
+      textQuery: query,
+      pageSize: 5,
+      fieldMask: LOOKUP_SEARCH_FIELDS,
+      maxRetries: 2
+    });
+    searches++;
+    hits = Array.isArray(found.places) ? found.places : [];
+  }
 
   if (!hits.length) {
     /* Not a failure. A trade business with no Google listing is the
@@ -94,12 +100,14 @@ async function lookupOne(query, opts) {
         'a conversation.',
       evidence: [`Places text search for "${query}" returned 0 results.`],
       cost: costOf({ searches, details, inputTokens: 0, outputTokens: 0 }),
-      alternatives: []
+      matches: []
     };
   }
 
   const pick = hits[0];
-  const others = hits.slice(1, 4).map(p => ({
+  /* Every match the search saw, this one included, so the page can offer
+     the others and switch back again. */
+  const matches = hits.slice(0, 5).map(p => ({
     name: (p.displayName && p.displayName.text) || '',
     address: p.formattedAddress || '',
     placeId: p.id
@@ -117,7 +125,7 @@ async function lookupOne(query, opts) {
   const listing = {
     name,
     placeId: pick.id,
-    address: pick.formattedAddress || '',
+    address: pick.formattedAddress || d.formattedAddress || '',
     phone: d.nationalPhoneNumber || '',
     trade: (d.primaryTypeDisplayName && d.primaryTypeDisplayName.text) || UNKNOWN,
     businessStatus: d.businessStatus || UNKNOWN,
@@ -216,7 +224,7 @@ async function lookupOne(query, opts) {
       siteTextNote,
       promptSent: buildInput(record)
     },
-    alternatives: others,
+    matches,
     cost: costOf({ searches, details, inputTokens: usage.input, outputTokens: usage.output })
   };
 }

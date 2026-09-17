@@ -33,7 +33,7 @@ const FIELD_MASK = [
 /* Details asks for what the search does not return. Only documented v1
    fields — an unknown one is a 400, not a silently missing value. */
 const DETAIL_FIELDS = [
-  'id', 'displayName', 'businessStatus', 'priceLevel', 'primaryTypeDisplayName',
+  'id', 'displayName', 'formattedAddress', 'businessStatus', 'priceLevel', 'primaryTypeDisplayName',
   'editorialSummary', 'reviews', 'rating', 'userRatingCount', 'websiteUri',
   'nationalPhoneNumber', 'regularOpeningHours'
 ].join(',');

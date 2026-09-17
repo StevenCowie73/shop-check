@@ -76,15 +76,18 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  let query = '';
+  let query = '', placeId = null;
   try {
     const body = await readBody(req);
     query = String(body.query || '').trim().slice(0, MAX_QUERY);
+    /* Place ids are opaque but bounded; anything else is not one. */
+    const raw = String(body.placeId || '').trim();
+    if (raw && /^[A-Za-z0-9_-]{1,255}$/.test(raw)) placeId = raw;
   } catch (e) {
     res.status(400).json({ error: 'Could not read the request.' });
     return;
   }
-  if (!query) {
+  if (!query && !placeId) {
     res.status(400).json({ error: 'Type a business name.' });
     return;
   }
@@ -103,6 +106,7 @@ module.exports = async function handler(req, res) {
     const result = await lookupOne(query, {
       placesKey,
       anthropicKey,
+      placeId,
       onProgress: p => send('progress', { step: p.step, label: p.label })
     });
     result.plain = formatPlain(result);
