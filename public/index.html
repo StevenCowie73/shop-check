@@ -78,6 +78,10 @@
   .name { font-size: 31px; font-weight: 700; line-height: 1.15; text-wrap: pretty; }
   .sub { font-size: 16px; font-weight: 700; text-transform: uppercase;
          letter-spacing: 0.06em; color: var(--muted); margin-top: 6px; }
+  /* what was actually sent to the search, so a mismatch between what you
+     typed and what was looked up is visible instead of being a mystery */
+  .searched { font-size: 15px; color: var(--muted); margin-top: 10px; }
+  .searched b { font-weight: 600; color: var(--ink); }
 
   .scores { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
   .score {
@@ -173,6 +177,7 @@ try { pw = sessionStorage.getItem(KEY) || ""; } catch (e) { pw = ""; }
 let sessionCost = 0;
 let lastQuery = "";      /* the words typed, kept so a pick can re-use them */
 let lastMatches = [];    /* every business the search saw, this one included */
+let lastWasPick = false; /* whether the card on screen came from a pick */
 
 function showGate(msg) {
   gate.hidden = false; search.hidden = true; hint.hidden = true;
@@ -265,6 +270,10 @@ function renderFound(r) {
   const card = el("div", { class: "card" });
   card.appendChild(el("h2", { class: "name", text: L.name }));
   card.appendChild(el("div", { class: "sub" }, [val(L.trade)]));
+  card.appendChild(el("p", { class: "searched" }, [
+    "searched: ", el("b", { text: r.query }),
+    lastWasPick ? " · then picked from the matches" : ""
+  ]));
 
   const scores = el("div", { class: "scores" });
   const box = (n, label) => el("div", { class: "score" }, [
@@ -447,6 +456,7 @@ async function run(q, placeId) {
           /* A fresh search replaces the candidate list; a pick keeps it,
              so you can go back to the one you came from. */
           if (!placeId) lastMatches = data.matches || [];
+          lastWasPick = Boolean(placeId);
           out.appendChild(data.found ? renderFound(data) : renderNotFound(data));
           sessionCost += data.cost.usd;
           costEl.textContent =
