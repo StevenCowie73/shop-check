@@ -38,6 +38,42 @@ const LIST = {
      this tab is a shortlist, not a category. */
   sectionCTitle: "Best bets",
   verdictMinScore: 60,
+
+  /* =====================================================================
+     THE BRIEF — everything you say on the call. Reword freely; it is the
+     same on every card and none of it comes from the model.
+     ===================================================================== */
+  brief: {
+    /* The three things we sell. The one the judgment picked leads; the
+       other two follow in one line each. */
+    modules: {
+      'missed calls': {
+        name: 'Missed-call text-back',
+        what: 'When you cannot pick up, the caller gets a text straight back in your words, so the job does not go to whoever answers first.'
+      },
+      'reviews': {
+        name: 'Review requests',
+        what: 'After a job is done, the customer gets one text asking for a Google review, so the good work you already do starts showing up when people search.'
+      },
+      'website': {
+        name: 'A simple website',
+        what: 'One page with what you do, the area you cover and a button to call you, so people who look you up find something instead of nothing.'
+      }
+    },
+    /* Asked on nearly every call. Identical on every card. */
+    faq: [
+      { q: 'How much?',
+        a: '$79 a month, first month free, no contract, cancel with a text.' },
+      { q: 'Is this a scam?',
+        a: "I'm local, I'll come out and set it up in person, the domain is registered in your name, and you pay nothing for the first month." },
+      { q: 'Does a robot answer my phone?',
+        a: "No. Nothing answers a call. It's a text message, in your words, that you approve beforehand. Your number doesn't change." },
+      { q: "I'm too busy.",
+        a: "That's the point. It's about nine minutes at your kitchen table, once." }
+    ],
+    /* What you tap after the call. */
+    outcomes: ['No answer', 'Not interested', 'Send link', 'Call back later', 'Interested']
+  },
   /* Shown when the page is inside a frame, where tel: and sms: links go
      nowhere, so the buttons copy instead. */
   copiedPhone: "Copied — paste in your dialler",
@@ -49,6 +85,7 @@ const OUT_DIR = process.env.SHOP_CHECK_OUT_DIR || path.join(__dirname, 'out');
 const SRC = path.join(OUT_DIR, 'prospects.csv');
 const AUDIT_SRC = path.join(OUT_DIR, 'site-audit.json');
 const JUDGE_SRC = path.join(OUT_DIR, 'judgments.json');
+const ENRICH_DIR = path.join(OUT_DIR, 'enrich-cache');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -85,6 +122,44 @@ function dialable(phone) {
   return d ? '+' + d : '';
 }
 
+/* The Places detail judge-prospects.js already gathered. Read only for the
+   businesses that reach the "Best bets" tab, and only for the few things the
+   brief needs that prospects.csv does not carry: how recent the newest
+   review is, and whether opening hours are listed at all. No API calls. */
+function readEnrichment(placeId) {
+  const file = path.join(ENRICH_DIR, placeId + '.json');
+  if (!fs.existsSync(file)) return null;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; }
+}
+
+/* Reviews come back in relevance order, not date order, so take the latest
+   by timestamp rather than trusting position. */
+function newestReviewAge(details, now) {
+  const times = ((details && details.reviews) || [])
+    .map(r => Date.parse(r.publishTime))
+    .filter(Number.isFinite);
+  if (!times.length) return null;
+  const days = Math.floor((now - Math.max(...times)) / 86400000);
+  if (days <= 1) return 'today';
+  if (days < 14) return days + ' days ago';
+  if (days < 60) return Math.round(days / 7) + ' weeks ago';
+  if (days < 365) return Math.round(days / 30) + ' months ago';
+  const years = days / 365;
+  return years < 1.5 ? 'about a year ago' : Math.round(years) + ' years ago';
+}
+
+/* One plain line about their website, for someone reading it aloud. */
+function websiteLine(business, audit) {
+  if (!business.hasWebsite) return { state: 'none', line: 'No website at all — just the Google listing.' };
+  if (!audit) return { state: 'ok', line: 'Has a website. It was not checked.' };
+  if (!audit.loads) {
+    return { state: 'broken',
+             line: 'Website does not load — ' + (audit.problem || 'it could not be reached') + '.' };
+  }
+  return { state: audit.siteScore >= LIST.siteAuditMinScore ? 'broken' : 'ok',
+           line: audit.whatsWrong ? 'Website loads. ' + audit.whatsWrong + '.' : 'Website loads and looks fine.' };
+}
+
 /* The judgments are optional too. No judgments file, no "Best bets" tab.
    Read from judgments.json rather than judgments.csv: the CSV has no
    place_id column, and without it a card cannot carry its tick state,
@@ -101,13 +176,30 @@ function readJudgments(jsonText) {
     byPlaceId.set(j.placeId, {
       score,
       pitch: String(j.best_pitch || ''),
-      oneLine: String(j.one_line || '')
+      oneLine: String(j.one_line || ''),
+      size: String(j.size || 'unknown'),
+      customer: String(j.customer || 'unknown'),
+      signals: Array.isArray(j.responsiveness_signals) ? j.responsiveness_signals : []
     });
   }
   return byPlaceId;
 }
 
 /* The website audit is optional. No audit file, no website lines. */
+/* readAudit keeps only the sites bad enough to mention on a card. The brief
+   needs every audited site, good or bad, so it can say "loads and looks
+   fine" as readily as "does not load". */
+function readAuditRecords(jsonText) {
+  const byPlaceId = new Map();
+  if (!jsonText) return byPlaceId;
+  let data;
+  try { data = JSON.parse(jsonText); } catch (e) { return byPlaceId; }
+  for (const site of (data && data.sites) || []) {
+    if (site && site.placeId) byPlaceId.set(site.placeId, site);
+  }
+  return byPlaceId;
+}
+
 function readAudit(jsonText) {
   const byPlaceId = new Map();
   if (!jsonText) return byPlaceId;
@@ -136,7 +228,7 @@ function siteScore(audit, placeId, website) {
   return hit ? hit.score : 0;
 }
 
-function readProspects(csvText, audit, judgments) {
+function readProspects(csvText, audit, judgments, auditRecords) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
@@ -176,10 +268,37 @@ function readProspects(csvText, audit, judgments) {
 
   /* C: the shortlist. Deliberately not deduped against A or B — a business
      worth ringing should be on this tab whatever else it is. */
+  const now = Date.now();
   const c = all
     .filter(x => x.verdict && x.verdict.score >= LIST.verdictMinScore)
     .sort((x, y) => y.verdict.score - x.verdict.score || x.name.localeCompare(y.name))
-    .map(x => ({ ...x, score: x.verdict.score, pitch: x.verdict.pitch, oneLine: x.verdict.oneLine }));
+    .map(x => {
+      const enriched = readEnrichment(x.id);
+      const details = (enriched && enriched.details) || null;
+      const auditRec = (auditRecords && auditRecords.get(x.id)) || null;
+      return {
+        ...x,
+        score: x.verdict.score,
+        pitch: x.verdict.pitch,
+        oneLine: x.verdict.oneLine,
+        /* Everything the brief needs, worked out here so the page only renders. */
+        brief: {
+          website: websiteLine(x, auditRec),
+          reviewCount: details && Number.isFinite(details.userRatingCount) ? details.userRatingCount : null,
+          newestReview: newestReviewAge(details, now),
+          hasHours: details
+            ? Boolean(details.regularOpeningHours &&
+                      Array.isArray(details.regularOpeningHours.weekdayDescriptions) &&
+                      details.regularOpeningHours.weekdayDescriptions.length)
+            : null,
+          size: x.verdict.size,
+          customer: x.verdict.customer,
+          signals: x.verdict.signals,
+          oneLine: x.verdict.oneLine,
+          pitch: x.verdict.pitch
+        }
+      };
+    });
 
   return { total: body.length, sections: { c, a, b } };
 }
@@ -233,6 +352,9 @@ function buildHtml(sections) {
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   .wrap { max-width: 520px; margin: 0 auto; padding: 0 24px 40px; }
+  /* The list is designed for a phone. On a tablet the column widens so an
+     open brief gets two real columns rather than two narrow ones. */
+  @media (min-width: 768px) { .wrap { max-width: 900px; } }
 
   header {
     position: sticky; top: 0; z-index: 5;
@@ -385,6 +507,77 @@ function buildHtml(sections) {
     border-radius: 4px; padding: 3px 8px;
   }
 
+  /* ---------- the brief ---------- */
+  /* While a brief is open the header stops being pinned, so the whole brief
+     has the screen. You are reading it mid-call, not switching tabs. */
+  body.reading header { position: static; }
+  .card.open { border-color: var(--ink); }
+  .expandable { cursor: pointer; }
+  .brief {
+    border-top: 2px solid var(--line); margin-top: 4px; padding-top: 18px;
+    display: grid; gap: 22px;
+  }
+  @media (min-width: 768px) {
+    .brief { grid-template-columns: 1fr 1fr; gap: 20px 32px; align-items: start; }
+    .brief .col { display: flex; flex-direction: column; gap: 18px; }
+  }
+  .brief h3 {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.09em; color: var(--muted); margin: 0 0 7px;
+  }
+  .know { margin: 0; padding: 0; list-style: none; }
+  .know li {
+    font-size: 16px; line-height: 1.4; padding: 4px 0 4px 18px;
+    position: relative; text-wrap: pretty;
+  }
+  .know li::before {
+    content: ""; position: absolute; left: 0; top: 13px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--line);
+  }
+  .know li.flag::before { background: var(--accent); }
+
+  .said { font-size: 16px; line-height: 1.45; margin: 0 0 8px;
+          padding: 10px 14px; background: var(--callout); border-radius: 6px; text-wrap: pretty; }
+  .said em { font-style: normal; font-weight: 700; text-transform: uppercase;
+             font-size: 11px; letter-spacing: 0.07em; color: var(--accent-dark);
+             display: block; margin-bottom: 3px; }
+  .attrib { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+
+  .opener-brief {
+    font-size: 21px; line-height: 1.4; text-wrap: pretty; margin: 0;
+    padding: 14px 18px; background: var(--callout); border-radius: 8px;
+  }
+  .offer { margin: 0; }
+  .offer .lead { font-size: 16px; line-height: 1.45; margin: 0 0 12px; text-wrap: pretty; }
+  .offer .lead b { display: block; font-size: 17px; }
+  .offer .also { font-size: 15px; line-height: 1.4; color: var(--body-muted); margin: 0 0 5px; }
+  .offer .also b { font-weight: 700; color: var(--ink); }
+
+  .faq { margin: 0; }
+  .faq dt { font-size: 15px; font-weight: 700; margin-top: 8px; }
+  .faq dt:first-child { margin-top: 0; }
+  .faq dd { margin: 2px 0 0; font-size: 15px; line-height: 1.45;
+            color: var(--body-muted); text-wrap: pretty; }
+
+  .outcomes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .outcome {
+    flex: 1 1 auto; min-height: 48px; padding: 10px 14px; cursor: pointer;
+    font-family: inherit; font-size: 15px; font-weight: 600; color: var(--ink);
+    background: transparent; border: 2px solid var(--line); border-radius: 8px;
+    touch-action: manipulation; white-space: nowrap;
+  }
+  .outcome:hover { background: var(--hover-fill); }
+  .outcome[aria-pressed="true"] {
+    background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+  }
+  .notes {
+    width: 100%; min-height: 96px; resize: vertical;
+    font-family: inherit; font-size: 16px; line-height: 1.45; padding: 12px 14px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--line); border-radius: 8px;
+  }
+  .saved { font-size: 13px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
+
   .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 17px; }
   .foot { color: var(--muted); font-size: 14px; text-align: center; margin-top: 24px; line-height: 1.45; }
 </style>
@@ -427,8 +620,11 @@ const COPY = ${JSON.stringify({ copiedPhone: LIST.copiedPhone, copiedMessage: LI
 const CALLED_KEY = "shopCheckCalled.v1";
 const HIDE_KEY = "shopCheckHideCalled.v1";
 const TAB_KEY = "shopCheckTab.v1";
+const OUTCOME_KEY = "shopCheckOutcome.v1";
+const NOTES_KEY = "shopCheckNotes.v1";
 const SITE_MIN = ${LIST.siteAuditMinScore};
 const VERDICT_MIN = ${LIST.verdictMinScore};
+const BRIEF = ${JSON.stringify(LIST.brief)};
 
 /* iPhones want "sms:NUMBER&body=", everything else "?body=" */
 function isApple() {
@@ -497,6 +693,11 @@ let hiding = readStore(HIDE_KEY, false) === true;
 /* A fresh visitor opens on "Best bets"; after that the page remembers. */
 const storedTab = readStore(TAB_KEY, null);
 let active = TAB_ORDER.includes(storedTab) ? storedTab : "c";
+/* Outcome and notes live beside the ticks: keyed on the business, on this
+   device only, same as everything else the page remembers. */
+const outcomes = readStore(OUTCOME_KEY, {}) || {};
+const notes = readStore(NOTES_KEY, {}) || {};
+let openId = null;          /* only one brief open at a time */
 /* Never open on an empty tab while another has work in it. */
 if (!SECTIONS[active].length) {
   active = TAB_ORDER.find(k => SECTIONS[k].length) || active;
@@ -576,6 +777,139 @@ function updateCounts() {
 function applyHiding() {
   listEl.classList.toggle("hiding", hiding);
   hideEl.setAttribute("aria-pressed", hiding ? "true" : "false");
+}
+
+/* ---------- the brief ---------- */
+function block(title, node) {
+  const d = el("div");
+  d.appendChild(el("h3", { text: title }));
+  d.appendChild(node);
+  return d;
+}
+
+function knowList(br) {
+  const ul = el("ul", { class: "know" });
+  const add = (text, flag) => {
+    const li = el("li", { text });
+    if (flag) li.className = "flag";
+    ul.appendChild(li);
+  };
+  add(br.website.line, br.website.state !== "ok");
+
+  if (br.reviewCount === null) add("Review count unknown.");
+  else if (!br.reviewCount) add("No reviews at all.", true);
+  else {
+    add(br.reviewCount + " review" + (br.reviewCount === 1 ? "" : "s") +
+        (br.newestReview ? ", newest " + br.newestReview + "." : "."),
+        br.reviewCount < 10);
+  }
+
+  if (br.hasHours === null) add("Opening hours unknown.");
+  else add(br.hasHours ? "Opening hours are listed." : "No opening hours listed.", !br.hasHours);
+
+  add(br.size === "unknown" ? "Size unknown." : "Looks like a " + br.size + ".");
+  add(br.customer === "unknown" ? "Who they work for is unknown."
+      : "Works mainly for " + br.customer + ".");
+  return ul;
+}
+
+function saidBlock(br) {
+  const wrap = el("div");
+  wrap.appendChild(el("p", { class: "attrib",
+    text: "Their own words, from their Google reviews:" }));
+  for (const s of br.signals) {
+    wrap.appendChild(el("p", { class: "said" }, [
+      el("em", { text: s.kind }), '"' + s.quote + '"'
+    ]));
+  }
+  return wrap;
+}
+
+/* The module the judgment picked leads; the other two follow. */
+function offerBlock(br) {
+  const names = Object.keys(BRIEF.modules);
+  const lead = names.includes(br.pitch) ? br.pitch
+    : (br.signals.length ? "missed calls" : "website");
+  const rest = names.filter(n => n !== lead);
+  const wrap = el("div", { class: "offer" });
+  const m = BRIEF.modules[lead];
+  wrap.appendChild(el("p", { class: "lead" }, [ el("b", { text: m.name }), m.what ]));
+  for (const n of rest) {
+    wrap.appendChild(el("p", { class: "also" }, [
+      el("b", { text: BRIEF.modules[n].name }), " — " + BRIEF.modules[n].what
+    ]));
+  }
+  return wrap;
+}
+
+function faqBlock() {
+  const dl = el("dl", { class: "faq" });
+  for (const item of BRIEF.faq) {
+    dl.appendChild(el("dt", { text: item.q }));
+    dl.appendChild(el("dd", { text: item.a }));
+  }
+  return dl;
+}
+
+function outcomeBlock(b) {
+  const row = el("div", { class: "outcomes" });
+  const buttons = [];
+  for (const name of BRIEF.outcomes) {
+    const btn = el("button", { class: "outcome", type: "button", text: name,
+                               "aria-pressed": outcomes[b.id] === name ? "true" : "false" });
+    btn.addEventListener("click", () => {
+      /* tapping the chosen one again clears it */
+      outcomes[b.id] = outcomes[b.id] === name ? undefined : name;
+      if (!outcomes[b.id]) delete outcomes[b.id];
+      writeStore(OUTCOME_KEY, outcomes);
+      buttons.forEach(x => x.setAttribute("aria-pressed",
+        x.textContent === outcomes[b.id] ? "true" : "false"));
+    });
+    buttons.push(btn);
+    row.appendChild(btn);
+  }
+  return row;
+}
+
+function notesBlock(b) {
+  const wrap = el("div");
+  const ta = el("textarea", { class: "notes", rows: "4",
+    placeholder: "What they actually said\u2026" });
+  ta.value = notes[b.id] || "";
+  const saved = el("p", { class: "saved", text: notes[b.id] ? "Saved on this device." : "" });
+  let timer = null;
+  ta.addEventListener("input", () => {
+    notes[b.id] = ta.value;
+    if (!ta.value) delete notes[b.id];
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      writeStore(NOTES_KEY, notes);
+      saved.textContent = ta.value ? "Saved on this device." : "";
+    }, 250);
+  });
+  wrap.appendChild(ta);
+  wrap.appendChild(saved);
+  return wrap;
+}
+
+function briefFor(b) {
+  const br = b.brief;
+  const wrap = el("div", { class: "brief" });
+  const left = el("div", { class: "col" });
+  const right = el("div", { class: "col" });
+
+  left.appendChild(block("What we know", knowList(br)));
+  if (br.signals.length) left.appendChild(block("What their customers said", saidBlock(br)));
+  left.appendChild(block("If they ask", faqBlock()));
+
+  right.appendChild(block("Your opener", el("p", { class: "opener-brief", text: br.oneLine })));
+  right.appendChild(block("What to offer", offerBlock(br)));
+  right.appendChild(block("Outcome", outcomeBlock(b)));
+  right.appendChild(block("Notes", notesBlock(b)));
+
+  wrap.appendChild(left);
+  wrap.appendChild(right);
+  return wrap;
 }
 
 function card(b) {
@@ -666,6 +1000,59 @@ function card(b) {
     updateCounts();
   });
   node.appendChild(toggle);
+
+  /* On "Best bets" the whole card opens a brief. Taps that land on the phone
+     button, a link, the tick, or anything inside the brief itself are that
+     control's business, not the card's. */
+  if (onBestTab && b.brief) {
+    node.classList.add("expandable");
+    node.setAttribute("tabindex", "0");
+    node.setAttribute("aria-expanded", openId === b.id ? "true" : "false");
+    let panel = null;
+
+    const setOpen = wanted => {
+      if (wanted) {
+        if (openId && openId !== b.id) {
+          const other = listEl.querySelector('.card.open');
+          if (other && other._collapse) other._collapse();
+        }
+        openId = b.id;
+        panel = briefFor(b);
+        node.appendChild(panel);
+        node.classList.add("open");
+        node.setAttribute("aria-expanded", "true");
+        /* Put the brief under the sticky header so the whole of it is on
+           screen, rather than opening below the fold mid-call. */
+        document.body.classList.add("reading");
+        requestAnimationFrame(() => {
+          const top = window.scrollY + panel.getBoundingClientRect().top - 12;
+          window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        });
+      } else {
+        if (panel) { panel.remove(); panel = null; }
+        if (openId === b.id) openId = null;
+        document.body.classList.remove("reading");
+        node.classList.remove("open");
+        node.setAttribute("aria-expanded", "false");
+      }
+    };
+    node._collapse = () => setOpen(false);
+
+    const fromControl = target =>
+      target.closest("button, a, textarea, input, select, label, .brief");
+    node.addEventListener("click", ev => {
+      if (fromControl(ev.target)) return;
+      setOpen(!node.classList.contains("open"));
+    });
+    node.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (fromControl(ev.target)) return;
+      ev.preventDefault();
+      setOpen(!node.classList.contains("open"));
+    });
+    if (openId === b.id) setOpen(true);
+  }
+
   paint();
   return node;
 }
@@ -707,6 +1094,8 @@ function footText() {
 }
 
 function paintList() {
+  openId = null;             /* the old nodes are about to go */
+  document.body.classList.remove("reading");
   listEl.textContent = "";
   rows().forEach(b => listEl.appendChild(card(b)));
   listEl.appendChild(emptyEl);
@@ -738,7 +1127,8 @@ function main() {
   const audit = readAudit(auditText);
   const judgeText = fs.existsSync(JUDGE_SRC) ? fs.readFileSync(JUDGE_SRC, 'utf8') : '';
   const judgments = readJudgments(judgeText);
-  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments);
+  const auditRecords = readAuditRecords(auditText);
+  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments, auditRecords);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST, buildHtml(sections), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);
@@ -757,6 +1147,6 @@ function main() {
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readJudgments, siteLine, siteScore, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readAuditRecords, readJudgments, websiteLine, newestReviewAge, siteLine, siteScore, readProspects, buildHtml, main };
 
 if (require.main === module) main();
