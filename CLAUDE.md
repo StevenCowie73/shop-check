@@ -39,6 +39,18 @@ URL rather than creating a new one, keep it private, and never share it.
 The same care applies to `finder/.env`, which holds the Google API key: never
 commit it, and never print the key.
 
+## Version control
+
+- **Commit and push to `main`.** Do not create feature branches. A previous
+  branch was deleted on the remote and nearly took an evening's work with it;
+  the branch that does not exist cannot be lost.
+- **Push after every commit.** Never batch pushes. Work that exists only in a
+  session container is one reclaim away from gone.
+- **Before ending any piece of work, confirm the commit is actually on the
+  remote** with `git ls-remote origin refs/heads/main`, and report the SHA.
+  A local commit is not a saved commit.
+- If a task genuinely requires a branch, say so and ask first.
+
 ## Reporting
 
 End **every** task with a report in exactly this format, inside a single
