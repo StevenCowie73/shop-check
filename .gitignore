@@ -32,3 +32,5 @@ Desktop.ini
 # finder
 finder/.env
 finder/out/
+# hand-checked facts about real businesses; the example file is committed instead
+finder/overrides.json

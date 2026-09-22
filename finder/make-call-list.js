@@ -87,6 +87,7 @@ const AUDIT_SRC = path.join(OUT_DIR, 'site-audit.json');
 const JUDGE_SRC = path.join(OUT_DIR, 'judgments.json');
 const ENRICH_DIR = path.join(OUT_DIR, 'enrich-cache');
 const ASTRA_SRC = path.join(OUT_DIR, 'astra-research.json');
+const { loadOverrides, ownerOf } = require('./lib/overrides.js');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -147,6 +148,19 @@ function readAstra(jsonText) {
     });
   }
   return byPlaceId;
+}
+
+/* A hand-checked owner outranks a researched one — somebody actually went
+   and looked. The email only ever comes from the research pass. */
+function mergeResearch(researched, handChecked) {
+  if (!handChecked) return researched || null;
+  return {
+    owner: handChecked.name,
+    ownerSource: handChecked.source,
+    ownerVerified: handChecked.confirmed ? 'confirmed' : null,
+    email: (researched && researched.email) || null,
+    emailSource: (researched && researched.emailSource) || null
+  };
 }
 
 /* The Places detail judge-prospects.js already gathered. Read only for the
@@ -255,7 +269,7 @@ function siteScore(audit, placeId, website) {
   return hit ? hit.score : 0;
 }
 
-function readProspects(csvText, audit, judgments, auditRecords, astra) {
+function readProspects(csvText, audit, judgments, auditRecords, astra, overrides) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
@@ -265,6 +279,13 @@ function readProspects(csvText, audit, judgments, auditRecords, astra) {
   }
   const body = rows.slice(1).filter(r => r.length === head.length && r[ix.place_id]);
   const all = body
+    .map(r => {
+      const ov = overrides && overrides.get(r[ix.place_id]);
+      /* a website we established by hand counts, even though the CSV was
+         written before we knew about it */
+      if (ov && ov.website && !r[ix.website]) r[ix.website] = ov.website;
+      return r;
+    })
     .map(r => ({
       id: r[ix.place_id],
       score: Number(r[ix.score]) || 0,
@@ -323,7 +344,8 @@ function readProspects(csvText, audit, judgments, auditRecords, astra) {
           signals: x.verdict.signals,
           oneLine: x.verdict.oneLine,
           pitch: x.verdict.pitch,
-          research: (astra && astra.get(x.id)) || null
+          research: mergeResearch(astra && astra.get(x.id),
+                                  ownerOf(overrides && overrides.get(x.id)))
         }
       };
     });
@@ -578,8 +600,22 @@ function buildHtml(sections) {
                  letter-spacing: 0.06em; color: var(--muted); margin-top: 8px; }
   .research dt:first-child { margin-top: 0; }
   .research dd { margin: 1px 0 0; font-size: 17px; line-height: 1.35; text-wrap: pretty; }
-  .research dd small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
-  .research dd small.ok { color: var(--accent-dark); font-weight: 600; }
+  /* Confirmed or not has to read at a glance; the source is one tap away
+     rather than a line of small print on every card. */
+  .tag {
+    display: inline-block; vertical-align: 2px; margin-left: 8px;
+    font-family: inherit; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    border-radius: 4px; padding: 2px 7px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    touch-action: manipulation;
+  }
+  .tag.yes { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+  .tag:hover { border-color: var(--ink); }
+  .tag-source {
+    font-size: 13px; line-height: 1.4; color: var(--muted);
+    margin: 4px 0 0; text-wrap: pretty;
+  }
 
   .opener-brief {
     font-size: 21px; line-height: 1.4; text-wrap: pretty; margin: 0;
@@ -870,19 +906,26 @@ function researchBlock(res) {
   const dl = el("dl", { class: "research" });
   const row = (label, value, source, verified) => {
     dl.appendChild(el("dt", { text: label }));
-    dl.appendChild(el("dd", {}, [
-      document.createTextNode(value),
-      el("small", { class: verified ? "ok" : "",
-        text: source ? (verified ? "" : "from ") + source + (verified ? "" : " \u2014 not verified")
-                     : "source not recorded" })
-    ]));
+    const dd = el("dd", {}, [document.createTextNode(value)]);
+    const tag = el("button", {
+      class: "tag" + (verified ? " yes" : ""), type: "button",
+      text: verified ? "confirmed" : "unconfirmed",
+      "aria-expanded": "false",
+      "aria-label": (verified ? "Confirmed" : "Unconfirmed") + ". Tap to see where this came from."
+    });
+    const note = el("p", { class: "tag-source",
+      text: source ? "from " + source : "no source recorded" });
+    note.hidden = true;
+    tag.addEventListener("click", () => {
+      note.hidden = !note.hidden;
+      tag.setAttribute("aria-expanded", note.hidden ? "false" : "true");
+    });
+    dd.appendChild(tag);
+    dd.appendChild(note);
+    dl.appendChild(dd);
   };
-  if (res.owner) {
-    /* a name a second source agreed with is worth more than one nobody checked */
-    row("Owner", res.owner,
-        res.ownerVerified ? res.ownerSource + " \u2014 " + res.ownerVerified : res.ownerSource,
-        Boolean(res.ownerVerified));
-  }
+  /* a name a second source agreed with is worth more than one nobody checked */
+  if (res.owner) row("Owner", res.owner, res.ownerSource, Boolean(res.ownerVerified));
   if (res.email) row("Email", res.email, res.emailSource, false);
   return dl;
 }
@@ -1192,7 +1235,32 @@ function main() {
   const auditRecords = readAuditRecords(auditText);
   const astraText = fs.existsSync(ASTRA_SRC) ? fs.readFileSync(ASTRA_SRC, 'utf8') : '';
   const astra = readAstra(astraText);
-  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments, auditRecords, astra);
+  const overrides = loadOverrides();
+  const csvText = fs.readFileSync(SRC, 'utf8');
+  /* A place id typed by hand is a place id that can be wrong, and a wrong
+     one silently attaches a fact to the wrong business. If the file names
+     the business, that name has to match. */
+  if (overrides.size) {
+    const rows = parseCsv(csvText);
+    const head = rows[0], ix = Object.fromEntries(head.map((h, i) => [h, i]));
+    const nameOf = new Map(rows.slice(1).filter(r => r.length === head.length)
+      .map(r => [r[ix.place_id], r[ix.name]]));
+    const bad = [];
+    for (const [id, ov] of overrides) {
+      if (!nameOf.has(id)) { bad.push(`${id} — no business with that place id`); continue; }
+      if (ov.name && String(ov.name).trim().toLowerCase() !== String(nameOf.get(id)).trim().toLowerCase()) {
+        bad.push(`${id} — file says "${ov.name}", prospects.csv says "${nameOf.get(id)}"`);
+      }
+    }
+    if (bad.length) {
+      console.error('\noverrides.json does not line up with prospects.csv:');
+      for (const b of bad) console.error('  ' + b);
+      console.error('Fix the place ids before this attaches a fact to the wrong business.');
+      process.exit(1);
+    }
+    console.log(`Applied ${overrides.size} hand-checked override${overrides.size === 1 ? '' : 's'} from ${path.basename(require('./lib/overrides.js').FILE)}`);
+  }
+  const { total, sections } = readProspects(csvText, audit, judgments, auditRecords, astra, overrides);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST, buildHtml(sections), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);

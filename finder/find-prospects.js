@@ -23,6 +23,7 @@ const {
   milesBetween, isChain, socialHost, isSocialOnly,
   scoreBusiness, whyText, slugFromPlaceId, shopCheckLink
 } = require('./lib/prospect.js');
+const { loadOverrides, applyToPlace } = require('./lib/overrides.js');
 
 /* =====================================================================
    1. SEARCH CONFIG — edit me.
@@ -146,7 +147,11 @@ async function runSearches(apiKey, radiusMeters) {
 }
 
 /* ---------- shaping the output ---------- */
-function toRow(p) {
+/* Corrections are applied to the Places record before it is scored, so a
+   business we know has a website does not keep being scored as if it had
+   none every time this runs. */
+function toRow(p, overrides) {
+  applyToPlace(p, overrides && overrides.get(p.id));
   const name = (p.displayName && p.displayName.text) || '';
   const scored = scoreBusiness(p);
   return {
@@ -190,7 +195,9 @@ async function main() {
 
   const started = Date.now();
   const { places, stats } = await runSearches(apiKey, radiusMeters);
-  const rows = places.map(toRow).sort((a, b) =>
+  const overrides = loadOverrides();
+  if (overrides.size) console.log(`\nApplying ${overrides.size} hand-checked override${overrides.size === 1 ? '' : 's'}.`);
+  const rows = places.map(p => toRow(p, overrides)).sort((a, b) =>
     b.score - a.score || b.reviews - a.reviews || a.name.localeCompare(b.name));
 
   fs.mkdirSync(OUT_DIR, { recursive: true });

@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Hand-checked facts, keyed by Google place id. Copy to overrides.json.",
+    "overrides.json is git-ignored: it names real businesses.",
+    "Every field is optional. Only add what you have actually established.",
+    "Find a place id in out/prospects.csv, or on a card's Google listing link."
+  ],
+  "ChIJexampleExampleExampleExample": {
+    "name": "Example Fencing (for your eyes only, not used by the code)",
+    "website": "https://example.com/",
+    "websiteNote": "confirmed: their Google phone number is on the page",
+    "owner": {
+      "name": "Jane Example",
+      "source": "Louisiana SoS filing",
+      "confirmed": true
+    }
+  }
+}
