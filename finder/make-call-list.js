@@ -86,6 +86,7 @@ const SRC = path.join(OUT_DIR, 'prospects.csv');
 const AUDIT_SRC = path.join(OUT_DIR, 'site-audit.json');
 const JUDGE_SRC = path.join(OUT_DIR, 'judgments.json');
 const ENRICH_DIR = path.join(OUT_DIR, 'enrich-cache');
+const ASTRA_SRC = path.join(OUT_DIR, 'astra-research.json');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -120,6 +121,32 @@ function dialable(phone) {
   if (d.length === 10) return '+1' + d;
   if (d.length === 11 && d[0] === '1') return '+' + d;
   return d ? '+' + d : '';
+}
+
+/* Web research done outside the pipeline, if any has been run. Only the
+   owner name and the email are taken: those were checked and held up, or
+   at worst went unverified. Its website answers are deliberately ignored —
+   three of the five it found were dead, and the only website status the
+   card shows is one check-sites.js actually loaded. */
+function readAstra(jsonText) {
+  const byPlaceId = new Map();
+  if (!jsonText) return byPlaceId;
+  let data;
+  try { data = JSON.parse(jsonText); } catch (e) { return byPlaceId; }
+  const real = v => v && !/^not found$/i.test(String(v).trim()) && String(v).trim() !== '-';
+  const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
+  for (const r of (data && data.results) || []) {
+    if (!r || !r.placeId) continue;
+    const owner = r.owner && real(r.owner.value) ? String(r.owner.value).trim() : null;
+    const email = r.email && real(r.email.value) ? String(r.email.value).trim() : null;
+    if (!owner && !email) continue;
+    byPlaceId.set(r.placeId, {
+      owner, ownerSource: owner ? host(r.owner.source) : null,
+      ownerVerified: (owner && r.owner.verified) ? String(r.owner.verified) : null,
+      email, emailSource: email ? host(r.email.source) : null
+    });
+  }
+  return byPlaceId;
 }
 
 /* The Places detail judge-prospects.js already gathered. Read only for the
@@ -228,7 +255,7 @@ function siteScore(audit, placeId, website) {
   return hit ? hit.score : 0;
 }
 
-function readProspects(csvText, audit, judgments, auditRecords) {
+function readProspects(csvText, audit, judgments, auditRecords, astra) {
   const rows = parseCsv(csvText);
   if (!rows.length) return { total: 0, businesses: [] };
   const head = rows[0];
@@ -295,7 +322,8 @@ function readProspects(csvText, audit, judgments, auditRecords) {
           customer: x.verdict.customer,
           signals: x.verdict.signals,
           oneLine: x.verdict.oneLine,
-          pitch: x.verdict.pitch
+          pitch: x.verdict.pitch,
+          research: (astra && astra.get(x.id)) || null
         }
       };
     });
@@ -542,6 +570,16 @@ function buildHtml(sections) {
              font-size: 11px; letter-spacing: 0.07em; color: var(--accent-dark);
              display: block; margin-bottom: 3px; }
   .attrib { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+
+  /* Researched elsewhere, not from the pipeline. Said so plainly, with the
+     source next to each line, because it has not been verified. */
+  .research { margin: 0; }
+  .research dt { font-size: 13px; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: 0.06em; color: var(--muted); margin-top: 8px; }
+  .research dt:first-child { margin-top: 0; }
+  .research dd { margin: 1px 0 0; font-size: 17px; line-height: 1.35; text-wrap: pretty; }
+  .research dd small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+  .research dd small.ok { color: var(--accent-dark); font-weight: 600; }
 
   .opener-brief {
     font-size: 21px; line-height: 1.4; text-wrap: pretty; margin: 0;
@@ -826,6 +864,29 @@ function saidBlock(br) {
 }
 
 /* The module the judgment picked leads; the other two follow. */
+/* Owner name and email found by web research. Never its website answers —
+   the card only shows a website the audit actually loaded. */
+function researchBlock(res) {
+  const dl = el("dl", { class: "research" });
+  const row = (label, value, source, verified) => {
+    dl.appendChild(el("dt", { text: label }));
+    dl.appendChild(el("dd", {}, [
+      document.createTextNode(value),
+      el("small", { class: verified ? "ok" : "",
+        text: source ? (verified ? "" : "from ") + source + (verified ? "" : " \u2014 not verified")
+                     : "source not recorded" })
+    ]));
+  };
+  if (res.owner) {
+    /* a name a second source agreed with is worth more than one nobody checked */
+    row("Owner", res.owner,
+        res.ownerVerified ? res.ownerSource + " \u2014 " + res.ownerVerified : res.ownerSource,
+        Boolean(res.ownerVerified));
+  }
+  if (res.email) row("Email", res.email, res.emailSource, false);
+  return dl;
+}
+
 function offerBlock(br) {
   const names = Object.keys(BRIEF.modules);
   const lead = names.includes(br.pitch) ? br.pitch
@@ -899,6 +960,7 @@ function briefFor(b) {
   const right = el("div", { class: "col" });
 
   left.appendChild(block("What we know", knowList(br)));
+  if (br.research) left.appendChild(block("Found by web research", researchBlock(br.research)));
   if (br.signals.length) left.appendChild(block("What their customers said", saidBlock(br)));
   left.appendChild(block("If they ask", faqBlock()));
 
@@ -1128,7 +1190,9 @@ function main() {
   const judgeText = fs.existsSync(JUDGE_SRC) ? fs.readFileSync(JUDGE_SRC, 'utf8') : '';
   const judgments = readJudgments(judgeText);
   const auditRecords = readAuditRecords(auditText);
-  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments, auditRecords);
+  const astraText = fs.existsSync(ASTRA_SRC) ? fs.readFileSync(ASTRA_SRC, 'utf8') : '';
+  const astra = readAstra(astraText);
+  const { total, sections } = readProspects(fs.readFileSync(SRC, 'utf8'), audit, judgments, auditRecords, astra);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST, buildHtml(sections), 'utf8');
   const size = (fs.statSync(DEST).size / 1024).toFixed(0);
@@ -1137,6 +1201,8 @@ function main() {
     console.log(`${LIST.sectionCTitle}: 0 — no judgments.json. Run judge-prospects.js to fill this tab.`);
   } else {
     console.log(`${LIST.sectionCTitle}: ${sections.c.length} (verdict score ${LIST.verdictMinScore}+)`);
+    const withResearch = sections.c.filter(x => x.brief && x.brief.research).length;
+    if (astra.size) console.log(`  of those, ${withResearch} carry a researched owner name or email`);
   }
   console.log(`${LIST.sectionATitle}: ${sections.a.length} (no website, scoring ${LIST.minScore}+)`);
   if (!auditText) {
@@ -1147,6 +1213,6 @@ function main() {
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readAuditRecords, readJudgments, websiteLine, newestReviewAge, siteLine, siteScore, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readAuditRecords, readJudgments, readAstra, websiteLine, newestReviewAge, siteLine, siteScore, readProspects, buildHtml, main };
 
 if (require.main === module) main();
