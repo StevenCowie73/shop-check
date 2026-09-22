@@ -88,6 +88,7 @@ const JUDGE_SRC = path.join(OUT_DIR, 'judgments.json');
 const ENRICH_DIR = path.join(OUT_DIR, 'enrich-cache');
 const ASTRA_SRC = path.join(OUT_DIR, 'astra-research.json');
 const { loadOverrides, ownerOf } = require('./lib/overrides.js');
+const { SCORING, isSocialOnly, socialHost } = require('./lib/prospect.js');
 const DEST = path.join(OUT_DIR, 'call-list.html');
 
 /* ---------- reading the CSV the finder wrote ---------- */
@@ -148,6 +149,32 @@ function readAstra(jsonText) {
     });
   }
   return byPlaceId;
+}
+
+/* prospects.csv was scored when Google said this business had no website.
+   An override says otherwise, so take back the points that were awarded
+   for not having one and strike the phrase out of the reason. The next
+   run of find-prospects.js scores it correctly from the start; this is
+   only for the CSV already on disk. */
+function scoreWithWebsite(score, why, website) {
+  const social = isSocialOnly(website);
+  let adjusted = Number(score) || 0;
+  adjusted -= SCORING.noWebsite;
+  if (social) adjusted += SCORING.socialOnlyWebsite;
+  adjusted = Math.max(0, Math.min(SCORING.maxScore, adjusted));
+
+  /* whyText builds "No website, only 6 reviews, no hours listed" — drop
+     the clause that is no longer true and tidy the capital letter. */
+  const parts = String(why || '').split(', ')
+    .filter(part => !/^no website$/i.test(part.trim()));
+  if (social) {
+    const host = socialHost(website);
+    parts.unshift('only ' + (host === 'Instagram' ? 'an Instagram' : 'a ' + (host || 'social')) + ' page');
+  }
+  let line = parts.join(', ');
+  if (!line) line = 'Nothing obvious missing, low priority';
+  line = line.charAt(0).toUpperCase() + line.slice(1);
+  return { score: adjusted, why: line };
 }
 
 /* A hand-checked owner outranks a researched one — somebody actually went
@@ -282,8 +309,14 @@ function readProspects(csvText, audit, judgments, auditRecords, astra, overrides
     .map(r => {
       const ov = overrides && overrides.get(r[ix.place_id]);
       /* a website we established by hand counts, even though the CSV was
-         written before we knew about it */
-      if (ov && ov.website && !r[ix.website]) r[ix.website] = ov.website;
+         written before we knew about it — including for the score, which
+         was awarded on the assumption there wasn't one */
+      if (ov && ov.website && !r[ix.website]) {
+        r[ix.website] = ov.website;
+        const fixed = scoreWithWebsite(r[ix.score], r[ix.why], ov.website);
+        r[ix.score] = String(fixed.score);
+        r[ix.why] = fixed.why;
+      }
       return r;
     })
     .map(r => ({
@@ -1281,6 +1314,6 @@ function main() {
   console.log(`Wrote ${DEST} (${size}K)`);
 }
 
-module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readAuditRecords, readJudgments, readAstra, websiteLine, newestReviewAge, siteLine, siteScore, readProspects, buildHtml, main };
+module.exports = { LIST, parseCsv, prettyTrade, dialable, readAudit, readAuditRecords, readJudgments, readAstra, scoreWithWebsite, websiteLine, newestReviewAge, siteLine, siteScore, readProspects, buildHtml, main };
 
 if (require.main === module) main();
