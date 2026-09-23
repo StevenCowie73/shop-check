@@ -5,7 +5,34 @@
    depend on the exact error wording, so the behaviour here is unchanged
    and only the user agent moved to an argument. */
 
+const dns = require('dns').promises;
+
 const { sleep } = require('./env.js');
+
+/* Node's own fetch ignores HTTPS_PROXY unless the process was started with
+   --use-env-proxy or NODE_USE_ENV_PROXY, and neither can be switched on once
+   the process is running. Where a proxy is named in the environment we install
+   undici's env-reading dispatcher instead, once, at require time.
+
+   When no proxy variable is set this does nothing at all, which is the case on
+   Vercel and on a plain laptop: their behaviour is exactly as before.
+
+   undici is optional. finder/ is meant to run with nothing installed, so if the
+   package is absent we say so plainly and carry on unproxied rather than
+   refusing to start. */
+(function useProxyFromEnvironment() {
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (!proxy) return;
+  if (process.env.NODE_USE_ENV_PROXY) return;   /* Node already did it at startup */
+  try {
+    const { EnvHttpProxyAgent, setGlobalDispatcher } = require('undici');
+    setGlobalDispatcher(new EnvHttpProxyAgent());
+  } catch (err) {
+    console.warn('A proxy is set in the environment but undici is not installed, ' +
+                 'so fetch will bypass it and some sites will look dead when they are not. ' +
+                 'Either npm install, or run node with --use-env-proxy.');
+  }
+})();
 
 const BROWSER_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -28,17 +55,50 @@ async function get(url, timeoutMs, userAgent) {
     const aborted = err && (err.name === 'AbortError' || err.name === 'TimeoutError');
     /* The caller sometimes needs to tell a missing domain from a slow one,
        so pass the underlying code up alongside the readable message. */
-    const cause = err && err.cause;
-    const code = aborted ? 'ETIMEDOUT_FETCH' : ((cause && cause.code) || (err && err.code) || '');
+    let code = aborted ? 'ETIMEDOUT_FETCH' : (rootCode(err) || '');
+    if (!aborted && INCONCLUSIVE.has(code) && await looksLikeMissingDomain(url)) {
+      return { error: 'domain not found', code: 'ENOTFOUND' };
+    }
     return { error: aborted ? 'timed out after ' + (timeoutMs / 1000) + 's' : shortError(err), code };
   } finally {
     clearTimeout(timer);
   }
 }
 
+/* A proxy dispatcher wraps the real failure one or more levels down, so the
+   DNS error that should read "domain not found" arrives as a bare
+   "fetch failed". Walk the cause chain to the code underneath. */
+function rootCode(err) {
+  let node = err;
+  for (let depth = 0; node && depth < 8; depth++) {
+    if (node.code) return node.code;
+    if (Array.isArray(node.errors) && node.errors.length) {
+      const nested = node.errors.map(rootCode).find(Boolean);
+      if (nested) return nested;
+    }
+    node = node.cause;
+  }
+  return '';
+}
+
+/* Through a proxy the client never resolves the host itself, so a domain that
+   does not exist comes back as an aborted tunnel with nothing underneath it.
+   These are the codes that tell us nothing, and are worth one DNS question. */
+const INCONCLUSIVE = new Set(['', 'UND_ERR_ABORTED', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT']);
+
+async function looksLikeMissingDomain(url) {
+  let host;
+  try { host = new URL(url).hostname; } catch (e) { return false; }
+  try {
+    await dns.lookup(host);
+    return false;                       /* it resolves, so the trouble is elsewhere */
+  } catch (err) {
+    return err && (err.code === 'ENOTFOUND' || err.code === 'EAI_NODATA');
+  }
+}
+
 function shortError(err) {
-  const cause = err && err.cause;
-  const code = (cause && cause.code) || (err && err.code);
+  const code = rootCode(err);
   const map = {
     ENOTFOUND: 'domain not found',
     ECONNREFUSED: 'connection refused',

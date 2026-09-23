@@ -4,7 +4,10 @@
   "private": true,
   "description": "Single-business lookup for Shop Check: one box, one card.",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.125.0"
+    "@anthropic-ai/sdk": "^0.125.0",
+    "undici": "^8.11.0"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
