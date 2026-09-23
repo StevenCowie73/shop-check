@@ -26,7 +26,11 @@ async function get(url, timeoutMs, userAgent) {
     return { res };
   } catch (err) {
     const aborted = err && (err.name === 'AbortError' || err.name === 'TimeoutError');
-    return { error: aborted ? 'timed out after ' + (timeoutMs / 1000) + 's' : shortError(err) };
+    /* The caller sometimes needs to tell a missing domain from a slow one,
+       so pass the underlying code up alongside the readable message. */
+    const cause = err && err.cause;
+    const code = aborted ? 'ETIMEDOUT_FETCH' : ((cause && cause.code) || (err && err.code) || '');
+    return { error: aborted ? 'timed out after ' + (timeoutMs / 1000) + 's' : shortError(err), code };
   } finally {
     clearTimeout(timer);
   }

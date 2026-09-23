@@ -231,9 +231,17 @@ const robotsCache = new Map();
 
 async function robotsFor(origin) {
   if (robotsCache.has(origin)) return robotsCache.get(origin);
-  const { res, error } = await get(origin + '/robots.txt', AUDIT.timeoutMs, AUDIT.userAgent);
+  const { res, error, code } = await get(origin + '/robots.txt', AUDIT.timeoutMs, AUDIT.userAgent);
   let verdict;
-  if (error) verdict = { groups: [], reachable: false };       /* let the page fetch report the real trouble */
+  /* RFC 9309 section 2.3.1:
+     - 4xx, 404 included, means there are no rules, so the site is open.
+     - 5xx and a timeout mean "unreachable", which the RFC says to treat as
+       a complete disallow. We do not look, and the site stays unknown.
+     - A host that does not resolve has nothing to fetch at all: the site is
+       dead, and the page fetch would only tell us the same thing again. */
+  if (code === 'ENOTFOUND') verdict = { groups: [], dnsFailure: true };
+  else if (code === 'ETIMEDOUT_FETCH') verdict = { groups: [], serverError: true, timedOut: true };
+  else if (error) verdict = { groups: [], reachable: false };  /* let the page fetch report the real trouble */
   else if (res.status >= 500) verdict = { groups: [], serverError: true };
   else if (res.status >= 400) verdict = { groups: [], reachable: true };
   else {
@@ -269,10 +277,22 @@ async function checkSite(row) {
   record.social = isNotTheirOwnSite(row.website);
 
   const robots = await robotsFor(url.origin);
+  if (robots.dnsFailure) {
+    return Object.assign(record, {
+      loads: false, skipped: false, problem: 'domain not found',
+      finalScheme: url.protocol, status: null, title: '', viewport: false,
+      phoneOnPage: false, newestYear: null, deadTech: [], bytes: 0
+    });
+  }
   if (robots.serverError) {
     return Object.assign(record, {
-      loads: null, skipped: true, problem: 'robots.txt could not be read, so we left the site alone',
-      skipNote: 'not checked — robots.txt unreadable',
+      loads: null, skipped: true,
+      problem: robots.timedOut
+        ? 'robots.txt timed out, so we left the site alone'
+        : 'robots.txt could not be read, so we left the site alone',
+      skipNote: robots.timedOut
+        ? 'not checked — robots.txt timed out'
+        : 'not checked — robots.txt unreadable',
       finalScheme: url.protocol, status: null, title: '', viewport: false,
       phoneOnPage: false, newestYear: null, deadTech: [], bytes: 0
     });
