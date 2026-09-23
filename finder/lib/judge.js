@@ -175,7 +175,13 @@ function buildInput(record) {
   lines.push('');
   if (a) {
     lines.push(`Website audit: ${a.website}`);
-    lines.push(`- needs-replacing score ${a.siteScore} out of 100: ${a.whatsWrong || 'nothing recorded'}`);
+    /* A site we were not allowed to fetch has no score. Say so plainly so
+       the judgment cannot read a missing number as a bad one. */
+    if (a.siteScore === null || a.skipped) {
+      lines.push(`- not checked: ${a.whatsWrong || 'we were not able to look at it'}. Treat its website as unknown, not bad.`);
+    } else {
+      lines.push(`- needs-replacing score ${a.siteScore} out of 100: ${a.whatsWrong || 'nothing recorded'}`);
+    }
     if (a.title) lines.push(`- page title: ${a.title}`);
   } else if (record.prospect.website) {
     lines.push(`Website: ${record.prospect.website} (not audited)`);

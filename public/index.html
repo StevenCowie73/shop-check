@@ -300,9 +300,11 @@ function renderFound(r) {
     auditNode.appendChild(el("p", { text: "No website listed, so there is nothing to audit." }));
   } else {
     auditNode.appendChild(rows([
-      ["Score", a.siteScore + " / 100"],
+      ["Score", a.siteScore === null ? "not checked" : a.siteScore + " / 100"],
       ["What's wrong", a.whatsWrong || ""],
-      ["Loaded", a.loads ? "yes" + (a.status ? " (HTTP " + a.status + ")" : "") : "no" + (a.problem ? " — " + a.problem : "")],
+      ["Loaded", a.skipped
+        ? "not checked" + (a.problem ? " — " + a.problem : "")
+        : (a.loads ? "yes" + (a.status ? " (HTTP " + a.status + ")" : "") : "no" + (a.problem ? " — " + a.problem : ""))],
       ["Built for phones", a.loads ? (a.viewport ? "yes" : "no") : undefined],
       ["Phone on the page", a.loads ? (a.phoneOnPage ? "yes" : "no") : undefined],
       ["Newest date on it", a.loads ? (a.newestYear || null) : undefined]

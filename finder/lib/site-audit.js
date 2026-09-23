@@ -174,6 +174,13 @@ function isNotTheirOwnSite(url) {
 
 /* ---------- scoring ---------- */
 function scoreSite(f) {
+  /* A site we were never allowed to look at is unknown, not bad. It gets no
+     score and no signals, so nothing about it can reach a letter. Only a
+     site we did reach and that genuinely failed counts as dead. */
+  if (f.skipped) {
+    return { score: null, signals: [], whatsWrong: f.skipNote || 'not checked' };
+  }
+
   const signals = [];
   let score = 0;
   const add = (key, signal) => { score += WEIGHTS[key]; signals.push(signal); };
@@ -264,7 +271,8 @@ async function checkSite(row) {
   const robots = await robotsFor(url.origin);
   if (robots.serverError) {
     return Object.assign(record, {
-      loads: false, skipped: true, problem: 'robots.txt could not be read, so we left the site alone',
+      loads: null, skipped: true, problem: 'robots.txt could not be read, so we left the site alone',
+      skipNote: 'not checked — robots.txt unreadable',
       finalScheme: url.protocol, status: null, title: '', viewport: false,
       phoneOnPage: false, newestYear: null, deadTech: [], bytes: 0
     });
@@ -272,7 +280,8 @@ async function checkSite(row) {
   const verdict = robotsVerdict(robots.groups, url.pathname || '/');
   if (!verdict.allowed) {
     return Object.assign(record, {
-      loads: false, skipped: true, problem: 'robots.txt asks crawlers to stay away',
+      loads: null, skipped: true, problem: 'robots.txt asks crawlers to stay away',
+      skipNote: 'not checked — robots.txt asks crawlers to stay away',
       finalScheme: url.protocol, status: null, title: '', viewport: false,
       phoneOnPage: false, newestYear: null, deadTech: [], bytes: 0
     });

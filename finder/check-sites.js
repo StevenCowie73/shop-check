@@ -22,7 +22,7 @@ const path = require('path');
 const { sleep } = require('./lib/env.js');
 const { csvCell, toCsv: writeCsv } = require('./lib/csv.js');
 const { parseCsv } = require('./make-call-list.js');
-const { AUDIT, WEIGHTS, checkSite } = require('./lib/site-audit.js');
+const { AUDIT, WEIGHTS, checkSite, scoreSite } = require('./lib/site-audit.js');
 
 /* =====================================================================
    AUDIT (how we visit) and WEIGHTS (how we score) moved to
@@ -98,11 +98,15 @@ async function main() {
       whatsWrong: scored.whatsWrong
     }));
     const flag = found.skipped ? 'skipped' : (found.loads ? 'ok' : 'dead');
-    console.log(`${String(i + 1).padStart(4)}/${sites.length}  ${String(scored.score).padStart(3)}  ${flag.padEnd(7)}  ${row.website.slice(0, 60)}`);
+    const shown = scored.score === null ? '?' : String(scored.score);
+    console.log(`${String(i + 1).padStart(4)}/${sites.length}  ${shown.padStart(3)}  ${flag.padEnd(7)}  ${row.website.slice(0, 60)}`);
     if (i < sites.length - 1) await sleep(AUDIT.delayMs);
   }
 
-  results.sort((a, b) => b.siteScore - a.siteScore || b.prospectScore - a.prospectScore || a.name.localeCompare(b.name));
+  /* An unscored (skipped) site sorts below every scored one rather than
+     turning the comparison into NaN. */
+  const rank = r => (Number.isFinite(r.siteScore) ? r.siteScore : -1);
+  results.sort((a, b) => rank(b) - rank(a) || b.prospectScore - a.prospectScore || a.name.localeCompare(b.name));
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(DEST_CSV, toCsv(results), 'utf8');
@@ -115,6 +119,7 @@ async function main() {
       loaded: results.filter(r => r.loads).length,
       dead: results.filter(r => !r.loads && !r.skipped).length,
       skipped: results.filter(r => r.skipped).length,
+      unscored: results.filter(r => r.siteScore === null).length,
       httpOnly: results.filter(r => r.loads && r.finalScheme === 'http:').length,
       noViewport: results.filter(r => r.loads && !r.viewport).length,
       noPhone: results.filter(r => r.loads && !r.phoneOnPage).length,
@@ -129,7 +134,7 @@ async function main() {
   console.log(`Sites checked:        ${results.length}`);
   console.log(`Loaded fine:          ${results.filter(r => r.loads).length}`);
   console.log(`Did not load:         ${dead}`);
-  console.log(`Left alone (robots):  ${skipped}`);
+  console.log(`Not checked (robots): ${skipped}`);
   console.log(`Still plain http:     ${results.filter(r => r.loads && r.finalScheme === 'http:').length}`);
   console.log(`No mobile viewport:   ${results.filter(r => r.loads && !r.viewport).length}`);
   console.log(`No phone on the page: ${results.filter(r => r.loads && !r.phoneOnPage).length}`);

@@ -220,6 +220,13 @@ function newestReviewAge(details, now) {
 function websiteLine(business, audit) {
   if (!business.hasWebsite) return { state: 'none', line: 'No website at all — just the Google listing.' };
   if (!audit) return { state: 'ok', line: 'Has a website. It was not checked.' };
+  /* Skipped is not broken. We never looked, so we claim nothing either way
+     and the line carries no complaint anyone could read out. */
+  if (audit.skipped) {
+    return { state: 'unknown',
+             line: 'Website not checked — ' +
+                   String(audit.skipNote || 'not checked').replace(/^not checked — /, '') + '.' };
+  }
   if (!audit.loads) {
     return { state: 'broken',
              line: 'Website does not load — ' + (audit.problem || 'it could not be reached') + '.' };
@@ -901,7 +908,7 @@ function knowList(br) {
     if (flag) li.className = "flag";
     ul.appendChild(li);
   };
-  add(br.website.line, br.website.state !== "ok");
+  add(br.website.line, br.website.state === "broken" || br.website.state === "none");
 
   if (br.reviewCount === null) add("Review count unknown.");
   else if (!br.reviewCount) add("No reviews at all.", true);

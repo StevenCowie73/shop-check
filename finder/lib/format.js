@@ -38,9 +38,10 @@ function formatPlain(r) {
   out.push('WEBSITE AUDIT');
   if (!a) out.push('  No website listed, so nothing to audit.');
   else {
-    out.push(`  Needs-replacing score: ${a.siteScore}/100`);
+    out.push(`  Needs-replacing score: ${a.siteScore === null ? UNKNOWN : a.siteScore + '/100'}`);
     out.push(`  ${a.whatsWrong || 'nothing recorded'}`);
-    out.push(`  Loaded: ${a.loads ? 'yes' : 'no'}${a.problem ? ' — ' + a.problem : ''}${a.status ? ' (HTTP ' + a.status + ')' : ''}`);
+    const loaded = a.skipped ? 'not checked' : (a.loads ? 'yes' : 'no');
+    out.push(`  Loaded: ${loaded}${a.problem ? ' — ' + a.problem : ''}${a.status ? ' (HTTP ' + a.status + ')' : ''}`);
   }
 
   out.push('');
