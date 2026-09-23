@@ -75,6 +75,8 @@ Rules:
   for tasks that failed or were abandoned partway.
 - Nothing follows the closing fence. The report is the last thing in the
   message.
+- Never report a step as done without reading its output. If a command prints
+  an error, the step is not done.
 
 **Everything I need is inside the fence.** Anything I have to act on — a
 walkthrough, steps to follow, a prompt to paste, a list to check, a decision
