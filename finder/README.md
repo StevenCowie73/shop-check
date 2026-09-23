@@ -14,12 +14,44 @@ It only builds a list.
 - A Google Cloud project with **Places API (New)** enabled and billing on.
 - An API key from that project.
 
-`find-prospects.js`, `check-sites.js` and `make-call-list.js` have no
-dependencies and need no `npm install`. `judge-prospects.js` and the Signal
-lookup use the Anthropic SDK, so run `npm install` in `finder/` before those.
+Run `npm install` at the repo root before anything else. `undici` is needed
+whenever the machine reaches the internet through a proxy (see **Behind a
+proxy** below), and `judge-prospects.js` and the Signal lookup also need the
+Anthropic SDK.
 
 The parts all four share — scoring, the website audit, the judgment prompt —
 live in `finder/lib/`. Edit them there, not in the scripts.
+
+## Behind a proxy
+
+If `HTTPS_PROXY` or `https_proxy` is set in your environment, read this before
+running anything that fetches a website.
+
+Node's built-in `fetch` ignores those variables. It only honours them when the
+process is started with `--use-env-proxy`, and that cannot be switched on once
+the process is running. Left alone, every request goes out unproxied, a scatter
+of them fail, and the audit records perfectly live websites as dead. There is no
+error and no warning — the run simply finishes and lies to you. That happened
+here, twice, across two full audits.
+
+So `lib/http.js` installs undici's proxy dispatcher itself, at require time,
+whenever a proxy variable is present. That needs the `undici` package:
+
+```
+npm install        # at the repo root
+```
+
+If a proxy is set and undici is missing, the scripts stop immediately with:
+
+```
+Proxy detected but undici is not installed — run npm install at the repo root
+```
+
+That is deliberate. A refusal to start costs a minute; an audit that quietly
+marks live sites dead costs a re-run and can put a false claim in a letter.
+
+With no proxy variable set — a plain laptop, or Vercel — none of this runs.
+undici is not even loaded, and behaviour is exactly as it was.
 
 ## Setting the key
 

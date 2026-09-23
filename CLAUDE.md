@@ -8,7 +8,7 @@ Shop Check is a guided intake for small trade businesses: the owner answers a
 few questions and gets one clear recommendation. The whole public site is
 `index.html` — a single self-contained page, no build step.
 
-`finder/` is a separate set of Node scripts (no dependencies, Node 18+) for
+`finder/` is a separate set of Node scripts (Node 18+, one dependency) for
 building a prospect call list from the Google Places API (New):
 
 - `find-prospects.js` — searches near a point, scores each business on how

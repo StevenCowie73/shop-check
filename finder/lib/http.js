@@ -17,21 +17,21 @@ const { sleep } = require('./env.js');
    When no proxy variable is set this does nothing at all, which is the case on
    Vercel and on a plain laptop: their behaviour is exactly as before.
 
-   undici is optional. finder/ is meant to run with nothing installed, so if the
-   package is absent we say so plainly and carry on unproxied rather than
-   refusing to start. */
+   If a proxy is named and undici is missing, we stop. Carrying on unproxied is
+   the worst outcome available: the run finishes, looks fine, and quietly marks
+   live websites dead. A refusal to start is cheap; a bad audit is not. */
 (function useProxyFromEnvironment() {
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (!proxy) return;
   if (process.env.NODE_USE_ENV_PROXY) return;   /* Node already did it at startup */
+  let undici;
   try {
-    const { EnvHttpProxyAgent, setGlobalDispatcher } = require('undici');
-    setGlobalDispatcher(new EnvHttpProxyAgent());
+    undici = require('undici');
   } catch (err) {
-    console.warn('A proxy is set in the environment but undici is not installed, ' +
-                 'so fetch will bypass it and some sites will look dead when they are not. ' +
-                 'Either npm install, or run node with --use-env-proxy.');
+    console.error('Proxy detected but undici is not installed — run npm install at the repo root');
+    process.exit(1);
   }
+  undici.setGlobalDispatcher(new undici.EnvHttpProxyAgent());
 })();
 
 const BROWSER_HEADERS = {
