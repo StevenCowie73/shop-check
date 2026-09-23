@@ -47,6 +47,7 @@ const AUDIT = {
    ===================================================================== */
 const WEIGHTS = {
   doesNotLoad: 60,        /* dead, timed out, or an error page */
+  parkedDomain: 60,       /* the domain answers, but there is no site on it */
   socialAsWebsite: 35,    /* their "website" is somebody else's platform */
   noViewport: 20,         /* no mobile viewport tag at all */
   noPhoneOnPage: 20,      /* nowhere to tap or copy a number */
@@ -162,6 +163,17 @@ function deadTech(html) {
   return found;
 }
 
+/* A parked domain answers 200 and serves a stub that bounces the visitor to
+   a holding page. There is no site there, so the ordinary complaints — no
+   viewport, no phone number — are not findings about their website, they
+   are findings about a placeholder. Say what is actually true instead. */
+function isParked(html, text) {
+  if (String(text || '').trim().length > 40) return false;
+  if (String(html || '').length > 4000) return false;
+  return /location\.(href|replace)\s*=?\s*\(?\s*["'][^"']*\/(lander|parking|park|default\.aspx)/i.test(html) ||
+         /<meta[^>]+http-equiv=["']?refresh[^>]*\/(lander|parking)/i.test(html);
+}
+
 function isNotTheirOwnSite(url) {
   let host;
   try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); }
@@ -190,6 +202,12 @@ function scoreSite(f) {
   if (!f.loads) {
     add('doesNotLoad', { kind: 'dead', text: 'the site does not load (' + f.problem + ')' });
     if (f.declaredScheme === 'http:') add('httpOnly', { kind: 'http', text: 'it is plain http, with no secure version' });
+    return finish(score, signals);
+  }
+
+  /* Parked short-circuits: nothing else on the page means anything. */
+  if (f.parked) {
+    add('parkedDomain', { kind: 'parked', text: 'the domain is parked — there is no website on it, just a holding page' });
     return finish(score, signals);
   }
 
@@ -337,6 +355,7 @@ async function checkSite(row) {
   return Object.assign(record, {
     loads: true,
     skipped: false,
+    parked: isParked(html, text),
     problem: '',
     finalUrl,
     finalScheme,
@@ -385,6 +404,6 @@ async function fetchSiteText(website) {
 module.exports = {
   AUDIT, WEIGHTS, SITE_TEXT_CHARS,
   parseRobots, robotsVerdict, matchesRobotsPath,
-  stripTags, hasViewport, pageTitle, findsPhone, newestYear, deadTech,
+  stripTags, hasViewport, pageTitle, findsPhone, newestYear, deadTech, isParked,
   isNotTheirOwnSite, scoreSite, robotsFor, checkSite, fetchSiteText
 };
