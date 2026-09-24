@@ -11,183 +11,13 @@ const fs = require('fs');
 const path = require('path');
 const C = require('./content.js');
 const { CARRIERS, READ_ON } = require('./carriers.js');
+const { pageShell, esc, CSS } = require('./shell.js');
 
 const OUT = path.join(__dirname, '..', 'public', 'coldenjames');
 
-const esc = s => String(s === undefined || s === null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
-
 /* Plain and sturdy: one column, generous type, no shadow, no gradient, no
    animation. It should read like a well-made sign, not a landing page. */
-const CSS = `
-:root {
-  --ground: #F4EFE6;
-  --surface: #FBF8F2;
-  --ink: #1C1917;
-  --muted: #5C5650;
-  --line: #CFC6B6;
-  --accent: #C4501B;
-  --radius: 8px;
-}
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 17px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-}
-.wrap { max-width: 640px; margin: 0 auto; padding: 0 20px 56px; }
-a { color: var(--accent); text-underline-offset: 3px; }
-a:hover { color: var(--ink); }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-header { padding: 44px 0 28px; }
-h1 {
-  margin: 0;
-  font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
-}
-.tagline {
-  margin: 14px 0 0; font-size: 18px; line-height: 1.5;
-  color: var(--muted); text-wrap: pretty; max-width: 30em;
-}
-.rule { height: 2px; background: var(--line); margin: 0 0 32px; }
-
-h2 {
-  margin: 34px 0 8px;
-  font-size: 13px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.09em; color: var(--muted);
-}
-h3 { margin: 26px 0 6px; font-size: 21px; font-weight: 600; line-height: 1.25; }
-p { margin: 0 0 14px; text-wrap: pretty; }
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 22px 22px 8px;
-  margin: 22px 0;
-}
-.price { font-size: 32px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
-.price-points { margin: 0; padding: 0; list-style: none; }
-.price-points li {
-  position: relative; padding: 6px 0 6px 20px; font-size: 17px;
-  border-top: 1px solid var(--line);
-}
-.price-points li:first-child { border-top: 0; }
-.price-points li::before {
-  content: ""; position: absolute; left: 0; top: 15px;
-  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-}
-.note {
-  border: 2px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 20px 22px;
-  margin: 30px 0;
-  font-size: 17px; line-height: 1.55; text-wrap: pretty;
-}
-.contact { margin: 6px 0 0; }
-.contact dt {
-  font-size: 13px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; color: var(--muted); margin-top: 14px;
-}
-.contact dt:first-child { margin-top: 0; }
-.contact dd { margin: 2px 0 0; font-size: 19px; }
-
-footer {
-  border-top: 2px solid var(--line);
-  margin-top: 44px; padding-top: 22px;
-  font-size: 15px; color: var(--muted); line-height: 1.5;
-}
-footer p { margin: 0 0 10px; }
-footer nav a { margin-right: 18px; }
-
-.draft {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 12px 16px; margin: 0 0 26px;
-  font-size: 15px; font-weight: 600;
-}
-.back { display: inline-block; margin: 0 0 8px; font-size: 15px; }
-.updated { font-size: 15px; color: var(--muted); }
-
-/* ---- the setup page ---- */
-/* Read one-handed, outdoors, by someone who does not want to be doing this.
-   Nothing under 18px, nothing that needs a steady thumb. */
-.pick { display: grid; gap: 10px; margin: 18px 0 8px; }
-.pick button {
-  width: 100%; min-height: 62px; padding: 14px 18px;
-  font-family: inherit; font-size: 20px; font-weight: 600; text-align: left;
-  color: var(--ink); background: var(--surface);
-  border: 2px solid var(--line); border-radius: var(--radius);
-  cursor: pointer; touch-action: manipulation;
-}
-.pick button:hover { border-color: var(--ink); }
-.pick button[aria-pressed="true"] { border-color: var(--accent); background: var(--callout, #F3E7D3); }
-.pick .net { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 2px; }
-.steps { margin: 0; padding: 0 0 0 28px; font-size: 18px; line-height: 1.55; }
-.steps li { margin: 0 0 12px; text-wrap: pretty; }
-.code {
-  display: block; margin: 18px 0 10px; padding: 18px 16px;
-  background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius);
-  /* shrinks rather than splitting: a number broken across two lines is a
-     number somebody types wrong */
-  font-size: clamp(21px, 6.5vw, 30px); font-weight: 700; letter-spacing: 0.01em;
-  text-align: center; line-height: 1.3; overflow-wrap: normal;
-}
-.code .num { display: block; margin-top: 6px; white-space: nowrap; }
-.dial {
-  display: block; min-height: 60px; padding: 16px;
-  background: var(--accent); color: #FFF7EE; border-radius: var(--radius);
-  font-size: 20px; font-weight: 700; text-align: center; text-decoration: none;
-  touch-action: manipulation;
-}
-.dial:hover { background: #A94314; color: #FFF7EE; }
-.warn {
-  border: 2px dashed var(--line); border-radius: var(--radius);
-  padding: 14px 16px; margin: 16px 0; font-size: 17px; font-weight: 600;
-}
-.sources { font-size: 14px; color: var(--muted); margin-top: 18px; }
-.sources a { color: var(--muted); }
-[hidden] { display: none !important; }
-
-@media (min-width: 700px) {
-  body { font-size: 18px; }
-  h1 { font-size: 52px; }
-  .wrap { padding-bottom: 72px; }
-}
-`.trim();
-
-function page({ title, description, body }) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>${esc(title)}</title>
-<meta name="description" content="${esc(description)}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-${CSS}
-</style>
-</head>
-<body>
-<div class="wrap">
-${body}
-</div>
-</body>
-</html>
-`;
-}
 
 function footer() {
   return `<footer>
@@ -245,7 +75,7 @@ ${contactBlock()}
 
 ${footer()}`;
 
-  return page({
+  return pageShell({
     title: C.BUSINESS.brand + ' — missed-call texts, reviews and simple websites for local trades',
     description: C.HOME.tagline,
     body
@@ -275,7 +105,7 @@ ${sections}
 
 ${footer()}`;
 
-  return page({
+  return pageShell({
     title: doc.title + ' — ' + C.BUSINESS.brand,
     description: doc.title + ' for ' + C.BUSINESS.brand + ', a trade name of ' + C.BUSINESS.legal + '.',
     body
@@ -413,7 +243,7 @@ ${footer()}
 })();
 </script>`;
 
-  return page({
+  return pageShell({
     title: C.SETUP.title + ' — ' + C.BUSINESS.brand,
     description: C.SETUP.title,
     body
@@ -450,7 +280,7 @@ function notFound() {
 
 ${footer()}`;
 
-  return page({
+  return pageShell({
     title: C.NOT_FOUND.title + ' — ' + C.BUSINESS.brand,
     description: C.NOT_FOUND.line,
     body
@@ -482,6 +312,15 @@ function build() {
     'export default ' + JSON.stringify(files['404.html']) + ';\n' +
     'export const robotsTxt = ' + JSON.stringify(files['robots.txt']) + ';\n' +
     'export const sitemapXml = ' + JSON.stringify(files['sitemap.xml']) + ';\n';
+  /* api/prospect.js is a Node function and cannot import the ESM edge
+     module, so the same HTML is written once more as CommonJS. */
+  const cjsPath = path.join(__dirname, 'notfound-html.js');
+  const cjs = "'use strict';\n/* Generated by site/build.js — do not edit. Run: npm run site:build */\n" +
+    'module.exports = ' + JSON.stringify(files['404.html']) + ';\n';
+  const wasCjs = fs.existsSync(cjsPath) ? fs.readFileSync(cjsPath, 'utf8') : null;
+  fs.writeFileSync(cjsPath, cjs);
+  written.push({ name: '../site/notfound-html.js', bytes: Buffer.byteLength(cjs), changed: wasCjs !== cjs });
+
   const modulePath = path.join(__dirname, 'notfound-page.js');
   const wasModule = fs.existsSync(modulePath) ? fs.readFileSync(modulePath, 'utf8') : null;
   fs.writeFileSync(modulePath, module_);
@@ -503,4 +342,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, home, legal, notFound, setup, robotsTxt, sitemapXml, page, CSS };
+module.exports = { build, home, legal, notFound, setup, robotsTxt, sitemapXml, pageShell, CSS };

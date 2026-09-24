@@ -55,6 +55,15 @@ http.createServer(async (req, res) => {
       res.writeHead(308, { Location: 'https://coldenjames.com' + req.url }).end();
       return;
     }
+    /* /p/REF, the same rewrite middleware does in production */
+    const prospect = /^\/p\/([A-Za-z0-9]{4,24})\/?$/.exec(url.pathname);
+    if (prospect) {
+      const q = new URLSearchParams({ ref: prospect[1] });
+      if (url.searchParams.get('c')) q.set('c', url.searchParams.get('c'));
+      req.url = '/api/prospect?' + q.toString();
+      return require('./api/prospect.js')(req, res);
+    }
+
     const textFile = SITE_TEXT[url.pathname];
     if (textFile) {
       res.writeHead(200, { 'Content-Type': textFile[0], 'X-Robots-Tag': 'noindex, nofollow' });
@@ -70,6 +79,18 @@ http.createServer(async (req, res) => {
     });
     res.end(fs.readFileSync(file));
     return;
+  }
+
+  /* the ColdenJames API routes, so the prospect page works locally */
+  const apiRoutes = {
+    '/api/prospect': './api/prospect.js',
+    '/api/places': './api/places.js',
+    '/api/track': './api/track.js'
+  };
+  if (apiRoutes[url.pathname]) {
+    res.status = code => { res.statusCode = code; return res; };
+    res.json = obj => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); };
+    return require(apiRoutes[url.pathname])(req, res);
   }
 
   if (url.pathname === '/api/lookup') {

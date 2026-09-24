@@ -77,6 +77,19 @@ export default function middleware(request) {
     return rewrite(new URL(hidden, url), { headers: { 'X-Robots-Tag': HIDDEN } });
   }
 
+  /* A prospect's own page. The reference code is the whole address; the
+     record behind it decides what the page says. Rendered by a function
+     rather than a file, so a database can replace the demo record without
+     anything here changing. */
+  const prospect = /^\/p\/([A-Za-z0-9]{4,24})\/?$/.exec(url.pathname);
+  if (prospect) {
+    const to = new URL('/api/prospect', url);
+    to.searchParams.set('ref', prospect[1]);
+    const channel = url.searchParams.get('c');
+    if (channel) to.searchParams.set('c', channel);
+    return rewrite(to, { headers: { 'X-Robots-Tag': HIDDEN } });
+  }
+
   const target = PAGES[url.pathname];
   if (target) {
     /* vercel.json withholds the noindex header from this host, so saying

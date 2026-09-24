@@ -1,15 +1,17 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>Page not found — ColdenJames</title>
-<meta name="description" content="This link doesn't match a page.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
+'use strict';
+
+/* The look of every ColdenJames page, in one place: the palette, the type,
+   and the shell each page is poured into.
+
+   The static pages are written to disk by site/build.js; the prospect page
+   is rendered per request by api/prospect.js. Both come through here, so
+   they cannot drift into two different-looking sites. */
+
+const esc = s => String(s === undefined || s === null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+const CSS = `
 :root {
   --ground: #F4EFE6;
   --surface: #FBF8F2;
@@ -152,21 +154,32 @@ footer nav a { margin-right: 18px; }
   h1 { font-size: 52px; }
   .wrap { padding-bottom: 72px; }
 }
+`.trim();
+
+function pageShell({ title, description, body, extraCss }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+${CSS}${extraCss || ''}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header>
-  <h1>Page not found</h1>
-  <p class="tagline">This link doesn't match a page.</p>
-</header>
-<div class="rule"></div>
-<p><a href="/">Go to the homepage</a></p>
-
-<footer>
-  <p>ColdenJames is a trade name of COWIE.AI LLC, Bossier City, Louisiana.</p>
-  <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
-</footer>
+${body}
 </div>
 </body>
 </html>
+`;
+}
+
+
+module.exports = { pageShell, esc, CSS };

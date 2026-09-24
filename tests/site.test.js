@@ -41,11 +41,29 @@ test('www redirects to the bare domain, permanently', async () => {
 });
 
 test('an unknown path on the site host is a real 404, not the homepage', async () => {
-  for (const p of ['/p/SOMEREF', '/p/', '/nope', '/coldenjames/index.html']) {
+  for (const p of ['/p/', '/nope', '/coldenjames/index.html']) {
     const res = middleware(req('coldenjames.com', p));
     assert.strictEqual(res.status, 404, p + ' should be 404');
     assert.strictEqual(rewriteTarget(res), null, p + ' should not rewrite to a page');
     assert.match(res.headers.get('content-type') || '', /text\/html/);
+  }
+});
+
+test('a reference-code path goes to the prospect route, which decides', async () => {
+  const res = middleware(req('coldenjames.com', '/p/DEMO2026?c=letter'));
+  const target = rewriteTarget(res);
+  assert.ok(target, '/p/DEMO2026 is handled');
+  assert.match(target, /\/api\/prospect\?/);
+  assert.match(target, /ref=DEMO2026/);
+  assert.match(target, /c=letter/);
+  assert.strictEqual(res.headers.get('x-robots-tag'), 'noindex, nofollow');
+});
+
+test('a malformed reference code never reaches the prospect route', async () => {
+  for (const p of ['/p/..%2F..%2Fetc', '/p/ab', '/p/' + 'x'.repeat(40), '/p/a/b']) {
+    const res = middleware(req('coldenjames.com', p));
+    assert.strictEqual(res.status, 404, p + ' should be refused at the edge');
+    assert.strictEqual(rewriteTarget(res), null, p);
   }
 });
 
@@ -67,7 +85,7 @@ test('only the three real pages on coldenjames.com are indexable', async () => {
 });
 
 test('/p/ and other unknown paths on coldenjames.com are noindex', async () => {
-  for (const p of ['/p/ABC', '/p/', '/anything-else']) {
+  for (const p of ['/p/ABC12345', '/p/', '/anything-else']) {
     const res = middleware(req('coldenjames.com', p));
     assert.strictEqual(res.headers.get('x-robots-tag'), 'noindex, nofollow', p);
   }
