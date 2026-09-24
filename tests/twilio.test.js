@@ -65,16 +65,27 @@ function withEnv(vars, fn) {
 
 const CONFIGURED = { TWILIO_ACCOUNT_SID: SID, TWILIO_AUTH_TOKEN: TOKEN, OWNER_CELL: OWNER };
 
-/* Replaces fetch and records what a route tried to send. */
-function captureSends(fn) {
+/* Replaces fetch and records what a route tried to send.
+
+   Two Twilio calls matter here: a GET to Messages.json asking whether we
+   already texted this number, and a POST to send one. `recent` says what the
+   lookup should answer, or 'fail' to make it break. */
+function captureSends(fn, { recent = [], lookup = 'ok' } = {}) {
   const sent = [];
+  const looked = [];
   const realFetch = global.fetch;
   global.fetch = async (url, init) => {
+    const method = (init && init.method) || 'GET';
+    if (method === 'GET') {
+      looked.push(String(url));
+      if (lookup === 'fail') return { ok: false, status: 500, text: async () => 'boom', json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ messages: recent }), text: async () => '{}' };
+    }
     sent.push({ url: String(url), params: Object.fromEntries(new URLSearchParams(init.body)), init });
     return { ok: true, status: 201, json: async () => ({ sid: 'SMtest' }), text: async () => '{}' };
   };
   return (async () => {
-    try { await fn(sent); }
+    try { await fn(sent, looked); }
     finally { global.fetch = realFetch; }
   })();
 }
@@ -189,6 +200,7 @@ for (const status of ['no-answer', 'busy', 'failed', 'canceled']) {
       assert.match(sent[0].url, /api\.twilio\.com\/2010-04-01\/Accounts\/ACtest.*\/Messages\.json/);
       assert.strictEqual(sent[0].params.To, CALLER, 'texts the caller');
       assert.strictEqual(sent[0].params.From, BUSINESS, 'from the business number');
+      assert.match(sent[0].params.Body, /^Hi, this is Steven at ColdenJames\./);
       assert.match(sent[0].params.Body, /Sorry I missed your call/);
       assert.match(sent[0].params.Body, /Reply STOP to opt out\./);
       assert.match(sent[0].init.headers.Authorization, /^Basic /);
@@ -221,7 +233,12 @@ test('an unknown dial status is treated as a miss', async () => {
 test('when Twilio refuses the message the caller is not promised one', async () => {
   await withEnv(CONFIGURED, async () => {
     const realFetch = global.fetch;
-    global.fetch = async () => ({ ok: false, status: 400, text: async () => 'nope', json: async () => ({}) });
+    global.fetch = async (url, init) => {
+      if (!init || (init.method || 'GET') === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ messages: [] }), text: async () => '{}' };
+      }
+      return { ok: false, status: 400, text: async () => 'nope', json: async () => ({}) };
+    };
     try {
       const res = fakeRes();
       await routes.dialStatus(
@@ -231,6 +248,62 @@ test('when Twilio refuses the message the caller is not promised one', async () 
       assert.match(res.body, /<Hangup\/>/);
     } finally { global.fetch = realFetch; }
   });
+});
+
+/* ---------- one text per caller per day ---------- */
+
+test('a first call in 24 hours gets the text', async () => {
+  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
+
+    assert.strictEqual(looked.length, 1, 'it asked Twilio first');
+    assert.match(looked[0], /Messages\.json\?/);
+    assert.match(looked[0], /To=%2B13185550102/, 'asked about this caller');
+    assert.match(looked[0], /From=%2B13185550103/, 'from our number');
+    assert.match(looked[0], /DateSent%3E=/, 'within a window');
+
+    assert.strictEqual(sent.length, 1, 'and sent the text');
+    assert.match(res.body, /<Say>Sorry I missed you\. I've just sent you a text\.<\/Say>/);
+  }, { recent: [] }));
+});
+
+test('a second call within 24 hours gets no text, and a different line', async () => {
+  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'busy' }), res);
+
+    assert.strictEqual(looked.length, 1, 'it asked');
+    assert.deepStrictEqual(sent, [], 'and sent nothing');
+    assert.match(res.body, /<Say>Sorry I missed you\. I'll call you back\.<\/Say>/);
+    assert.match(res.body, /<Hangup\/>/);
+    assert.strictEqual(res.body.includes("just sent you a text"), false,
+      'must not claim a text that was not sent');
+  }, { recent: [{ sid: 'SMearlier' }] }));
+});
+
+test('if the lookup fails the text goes out anyway', async () => {
+  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
+
+    assert.strictEqual(looked.length, 1, 'it tried to ask');
+    assert.strictEqual(sent.length, 1, 'a missed text is worse than a duplicate');
+    assert.match(res.body, /just sent you a text/);
+  }, { lookup: 'fail' }));
+});
+
+test('an answered call never even asks', async () => {
+  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
+    assert.deepStrictEqual(looked, []);
+    assert.deepStrictEqual(sent, []);
+  }));
 });
 
 /* ---------- sms ---------- */

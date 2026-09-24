@@ -9,11 +9,15 @@
    Anything other than "completed" means the caller did not get through, so
    they get one text. That is the whole product. */
 
-const { authorize, twiml, sendSms } = require('../../lib/twilio.js');
+const { authorize, twiml, sendSms, textedWithin } = require('../../lib/twilio.js');
 
 const DEFAULT_TEXT =
-  "Hi, this is Steven. Sorry I missed your call. I'll get back to you today, " +
-  "or just text me here. Reply STOP to opt out.";
+  "Hi, this is Steven at ColdenJames. Sorry I missed your call. I'll get back " +
+  "to you today, or just text me here. Reply STOP to opt out.";
+
+/* Someone who rings three times in an afternoon should not get three texts.
+   One a day is a reminder; three is a nuisance and a carrier complaint. */
+const QUIET_HOURS = 24;
 
 module.exports = async function handler(req, res) {
   const gate = await authorize(req, res);
@@ -32,6 +36,23 @@ module.exports = async function handler(req, res) {
   const caller = params.From;
   const businessNumber = params.To;
   const body = process.env.AUTO_TEXT || DEFAULT_TEXT;
+
+  /* If we cannot find out whether we already texted them, send. A caller who
+     gets a second text is mildly annoyed; a caller who gets none thinks they
+     were ignored, which is the whole thing we are selling against. */
+  let alreadyTexted = false;
+  try {
+    alreadyTexted = await textedWithin({
+      sid, token, from: businessNumber, to: caller, hours: QUIET_HOURS
+    });
+  } catch (err) {
+    console.error('could not check for a recent text, sending anyway: ' + (err && err.message));
+  }
+
+  if (alreadyTexted) {
+    twiml(res, "<Say>Sorry I missed you. I'll call you back.</Say><Hangup/>");
+    return;
+  }
 
   try {
     await sendSms({ sid, token, from: businessNumber, to: caller, body });

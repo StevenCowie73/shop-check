@@ -134,7 +134,7 @@ function letterHtml(row, rec) {
     <div class="qr">QR</div>
     <p class="url">OUTREACH_DOMAIN/p/REF</p>
   </div>
-  <p>$79 a month covers three things: the missed-call text, a text asking happy customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
+  <p>$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
   <p>If it's not for you, no hard feelings. If it is, text me.</p>
   <p class="sig">Steven Cowie<br>[PHONE]</p>
   <p class="foot">Sent to the mailing address on your state contractor license.<br>Text STOP to the number above and you won't hear from me again.</p>

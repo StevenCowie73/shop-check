@@ -40,19 +40,74 @@ test('www redirects to the bare domain, permanently', async () => {
   assert.strictEqual(res.headers.get('location'), 'https://coldenjames.com/privacy');
 });
 
-test('an unknown path on the site host falls back to the homepage', async () => {
-  const res = middleware(req('coldenjames.com', '/p/SOMEREF'));
-  assert.match(rewriteTarget(res), /\/coldenjames\/index\.html$/);
+test('an unknown path on the site host is a real 404, not the homepage', async () => {
+  for (const p of ['/p/SOMEREF', '/p/', '/nope', '/coldenjames/index.html']) {
+    const res = middleware(req('coldenjames.com', p));
+    assert.strictEqual(res.status, 404, p + ' should be 404');
+    assert.strictEqual(rewriteTarget(res), null, p + ' should not rewrite to a page');
+    assert.match(res.headers.get('content-type') || '', /text\/html/);
+  }
+});
+
+test('the 404 page says the right thing and offers a way back', async () => {
+  const res = middleware(req('coldenjames.com', '/nope'));
+  const html = await res.text();
+  assert.ok(html.includes("This link doesn't match a page."), 'the line');
+  assert.match(html, /href="\/"/, 'a link home');
+  assert.ok(html.includes('#F4EFE6'), 'the design system');
+});
+
+/* ---------- indexing ---------- */
+
+test('only the three real pages on coldenjames.com are indexable', async () => {
+  for (const p of ['/', '/privacy', '/terms']) {
+    const res = middleware(req('coldenjames.com', p));
+    assert.strictEqual(res.headers.get('x-robots-tag'), 'index, follow', p);
+  }
+});
+
+test('/p/ and other unknown paths on coldenjames.com are noindex', async () => {
+  for (const p of ['/p/ABC', '/p/', '/anything-else']) {
+    const res = middleware(req('coldenjames.com', p));
+    assert.strictEqual(res.headers.get('x-robots-tag'), 'noindex, nofollow', p);
+  }
+});
+
+test('the raw /coldenjames/*.html paths are never indexable', async () => {
+  /* On the site host they 404. On every other host middleware does not
+     touch them, and vercel.json applies noindex because the host is not
+     coldenjames.com. */
+  for (const p of ['/coldenjames/index.html', '/coldenjames/privacy.html', '/coldenjames/terms.html']) {
+    const onSite = middleware(req('coldenjames.com', p));
+    assert.strictEqual(onSite.status, 404, p + ' on the site host');
+    assert.strictEqual(onSite.headers.get('x-robots-tag'), 'noindex, nofollow');
+
+    const elsewhere = middleware(req('signal.cowie.ai', p));
+    assert.strictEqual(rewriteTarget(elsewhere), null, p + ' elsewhere is untouched');
+  }
+});
+
+test('vercel.json withholds noindex from the site host and applies it everywhere else', () => {
+  const conf = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  const robots = conf.headers.filter(h =>
+    h.headers.some(x => x.key === 'X-Robots-Tag'));
+  assert.strictEqual(robots.length, 1, 'exactly one rule sets X-Robots-Tag');
+  assert.deepStrictEqual(robots[0].missing, [{ type: 'host', value: 'coldenjames.com' }],
+    'it is withheld from coldenjames.com and applies to every other host');
+  assert.strictEqual(robots[0].headers[0].value, 'noindex, nofollow');
 });
 
 /* ---------- Signal is untouched ---------- */
 
-test('no other host is rewritten at all', async () => {
+test('no other host is rewritten, redirected or 404ed', async () => {
   for (const host of ['signal.cowie.ai', 'signal-abc123.vercel.app', 'localhost', 'coldenjames.com.evil.test']) {
-    for (const p of ['/', '/privacy', '/terms', '/index.html']) {
+    for (const p of ['/', '/privacy', '/terms', '/index.html', '/p/ABC']) {
       const res = middleware(req(host, p));
       assert.strictEqual(rewriteTarget(res), null, host + p + ' must not be rewritten');
-      assert.ok(res.status === 200 || res.status === undefined, host + p + ' must not redirect');
+      assert.notStrictEqual(res.status, 404, host + p + ' must not be 404ed by us');
+      assert.notStrictEqual(res.status, 308, host + p + ' must not be redirected');
+      assert.strictEqual(res.headers.get('x-robots-tag'), null,
+        host + p + ' leaves the robots header to vercel.json');
     }
   }
 });
@@ -150,7 +205,7 @@ test('the terms carry the Google clause and the commercial terms', () => {
 /* ---------- house style ---------- */
 
 test('no page uses the word AI in visible copy, and no emoji', () => {
-  for (const name of ['index.html', 'privacy.html', 'terms.html']) {
+  for (const name of ['index.html', 'privacy.html', 'terms.html', '404.html']) {
     const html = fs.readFileSync(path.join(OUT, name), 'utf8');
     const visible = html
       .replace(/<style[\s\S]*?<\/style>/g, ' ')
@@ -161,6 +216,17 @@ test('no page uses the word AI in visible copy, and no emoji', () => {
     assert.strictEqual(/\bAI\b/.test(withoutLegalName), false, name + ' uses the word AI');
     assert.strictEqual(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(visible), false, name + ' has an emoji');
   }
+});
+
+test('no page asks only happy customers for a review', () => {
+  /* Google forbids review gating — asking selectively based on how the job
+     went. Nothing customer-facing may suggest it. */
+  for (const name of ['index.html', 'privacy.html', 'terms.html', '404.html']) {
+    const html = fs.readFileSync(path.join(OUT, name), 'utf8');
+    assert.strictEqual(/happy|satisfied|pleased/i.test(html), false, name);
+  }
+  const home = fs.readFileSync(path.join(OUT, 'index.html'), 'utf8');
+  assert.ok(home.includes('Every customer whose job is done gets asked, once.'));
 });
 
 test('the palette and font are the project ones', () => {

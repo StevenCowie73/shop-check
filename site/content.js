@@ -30,6 +30,12 @@ const BUSINESS = {
 
 const UPDATED = 'September 2026';
 
+const NOT_FOUND = {
+  title: 'Page not found',
+  line: "This link doesn't match a page.",
+  backLabel: 'Go to the homepage'
+};
+
 const HOME = {
   tagline: 'Missed-call texts, reviews and simple websites for local trades. ' +
            'Bossier City, Louisiana.',
@@ -46,7 +52,7 @@ const HOME = {
       title: 'Review requests',
       body: 'After a job is done, a short text asks the customer to leave a ' +
             'review, with the link already in it. No chasing, no awkward ask ' +
-            'in person. The people who were happy are the ones who get asked.'
+            'in person. Every customer whose job is done gets asked, once.'
     },
     {
       title: 'A simple website',
@@ -257,6 +263,6 @@ const TERMS = {
 };
 
 module.exports = {
-  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE,
+  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND,
   GOOGLE_PRIVACY, GOOGLE_MAPS_TERMS, CARRIER_SENTENCE
 };

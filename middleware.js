@@ -1,4 +1,5 @@
 import { next, rewrite } from '@vercel/edge';
+import NOT_FOUND_PAGE from './site/notfound-page.js';
 
 /* Two sites, one Vercel project, told apart by the host.
 
@@ -15,15 +16,16 @@ import { next, rewrite } from '@vercel/edge';
    request body, a header, or the URL a Twilio signature was computed over. */
 
 export const config = {
-  /* everything except /api/..., Vercel's internals, and static assets */
+  /* everything except /api/..., Vercel's internals, and the favicon */
   matcher: ['/((?!api/|_vercel/|favicon\\.ico).*)']
 };
 
 const SITE_HOSTS = new Set(['coldenjames.com', 'www.coldenjames.com']);
 const CANONICAL = 'coldenjames.com';
 
-/* The three pages the site actually has. Anything else on this host falls
-   through to the homepage rather than showing a Vercel 404. */
+/* The only three pages that exist, and the only three search engines may
+   index. Everything else on this host — the /coldenjames/*.html files by
+   their real paths, and /p/ which is not built yet — is a 404. */
 const PAGES = {
   '/': '/coldenjames/index.html',
   '/privacy': '/coldenjames/privacy.html',
@@ -31,6 +33,9 @@ const PAGES = {
   '/terms': '/coldenjames/terms.html',
   '/terms/': '/coldenjames/terms.html'
 };
+
+const INDEXABLE = 'index, follow';
+const HIDDEN = 'noindex, nofollow';
 
 export default function middleware(request) {
   const url = new URL(request.url);
@@ -46,9 +51,20 @@ export default function middleware(request) {
   }
 
   const target = PAGES[url.pathname];
-  if (target) return rewrite(new URL(target, url));
+  if (target) {
+    /* vercel.json withholds the noindex header from this host, so saying
+       so here is what actually makes these three pages indexable. */
+    return rewrite(new URL(target, url), { headers: { 'X-Robots-Tag': INDEXABLE } });
+  }
 
-  /* /p/REF and anything else on this domain is not built yet. Send it to
-     the homepage rather than leaving a dead end on a public site. */
-  return rewrite(new URL(PAGES['/'], url));
+  /* A real 404, not the homepage wearing a wrong URL. A soft 404 teaches
+     search engines that every mistyped link is a valid page. */
+  return new Response(NOT_FOUND_PAGE, {
+    status: 404,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Robots-Tag': HIDDEN,
+      'Cache-Control': 'no-store'
+    }
+  });
 }

@@ -47,9 +47,13 @@ http.createServer(async (req, res) => {
       res.writeHead(308, { Location: 'https://coldenjames.com' + req.url }).end();
       return;
     }
-    const page = SITE_PAGES[url.pathname] || SITE_PAGES['/'];
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(fs.readFileSync(path.join(__dirname, 'public', page)));
+    const page = SITE_PAGES[url.pathname];
+    const file = path.join(__dirname, 'public', page || 'coldenjames/404.html');
+    res.writeHead(page ? 200 : 404, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Robots-Tag': page ? 'index, follow' : 'noindex, nofollow'
+    });
+    res.end(fs.readFileSync(file));
     return;
   }
 
