@@ -106,6 +106,46 @@ footer nav a { margin-right: 18px; }
 .back { display: inline-block; margin: 0 0 8px; font-size: 15px; }
 .updated { font-size: 15px; color: var(--muted); }
 
+/* ---- the setup page ---- */
+/* Read one-handed, outdoors, by someone who does not want to be doing this.
+   Nothing under 18px, nothing that needs a steady thumb. */
+.pick { display: grid; gap: 10px; margin: 18px 0 8px; }
+.pick button {
+  width: 100%; min-height: 62px; padding: 14px 18px;
+  font-family: inherit; font-size: 20px; font-weight: 600; text-align: left;
+  color: var(--ink); background: var(--surface);
+  border: 2px solid var(--line); border-radius: var(--radius);
+  cursor: pointer; touch-action: manipulation;
+}
+.pick button:hover { border-color: var(--ink); }
+.pick button[aria-pressed="true"] { border-color: var(--accent); background: var(--callout, #F3E7D3); }
+.pick .net { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.steps { margin: 0; padding: 0 0 0 28px; font-size: 18px; line-height: 1.55; }
+.steps li { margin: 0 0 12px; text-wrap: pretty; }
+.code {
+  display: block; margin: 18px 0 10px; padding: 18px 16px;
+  background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius);
+  /* shrinks rather than splitting: a number broken across two lines is a
+     number somebody types wrong */
+  font-size: clamp(21px, 6.5vw, 30px); font-weight: 700; letter-spacing: 0.01em;
+  text-align: center; line-height: 1.3; overflow-wrap: normal;
+}
+.code .num { display: block; margin-top: 6px; white-space: nowrap; }
+.dial {
+  display: block; min-height: 60px; padding: 16px;
+  background: var(--accent); color: #FFF7EE; border-radius: var(--radius);
+  font-size: 20px; font-weight: 700; text-align: center; text-decoration: none;
+  touch-action: manipulation;
+}
+.dial:hover { background: #A94314; color: #FFF7EE; }
+.warn {
+  border: 2px dashed var(--line); border-radius: var(--radius);
+  padding: 14px 16px; margin: 16px 0; font-size: 17px; font-weight: 600;
+}
+.sources { font-size: 14px; color: var(--muted); margin-top: 18px; }
+.sources a { color: var(--muted); }
+[hidden] { display: none !important; }
+
 @media (min-width: 700px) {
   body { font-size: 18px; }
   h1 { font-size: 52px; }

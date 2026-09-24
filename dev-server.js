@@ -35,6 +35,14 @@ const SITE_PAGES = {
   '/terms': 'coldenjames/terms.html',
   '/terms/': 'coldenjames/terms.html'
 };
+const SITE_PRIVATE = {
+  '/setup': 'coldenjames/setup.html',
+  '/setup/': 'coldenjames/setup.html'
+};
+const SITE_TEXT = {
+  '/robots.txt': ['text/plain; charset=utf-8', 'coldenjames/robots.txt'],
+  '/sitemap.xml': ['application/xml; charset=utf-8', 'coldenjames/sitemap.xml']
+};
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -47,9 +55,16 @@ http.createServer(async (req, res) => {
       res.writeHead(308, { Location: 'https://coldenjames.com' + req.url }).end();
       return;
     }
+    const textFile = SITE_TEXT[url.pathname];
+    if (textFile) {
+      res.writeHead(200, { 'Content-Type': textFile[0], 'X-Robots-Tag': 'noindex, nofollow' });
+      res.end(fs.readFileSync(path.join(__dirname, 'public', textFile[1])));
+      return;
+    }
     const page = SITE_PAGES[url.pathname];
-    const file = path.join(__dirname, 'public', page || 'coldenjames/404.html');
-    res.writeHead(page ? 200 : 404, {
+    const hidden = SITE_PRIVATE[url.pathname];
+    const file = path.join(__dirname, 'public', page || hidden || 'coldenjames/404.html');
+    res.writeHead(page || hidden ? 200 : 404, {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Robots-Tag': page ? 'index, follow' : 'noindex, nofollow'
     });

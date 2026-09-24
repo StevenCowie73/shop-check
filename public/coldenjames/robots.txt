@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /p/
+Disallow: /setup
+
+Sitemap: https://coldenjames.com/sitemap.xml

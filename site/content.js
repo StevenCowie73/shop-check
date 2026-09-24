@@ -30,6 +30,30 @@ const BUSINESS = {
 
 const UPDATED = 'September 2026';
 
+const SETUP = {
+  title: 'Set up your missed-call text',
+  intro: 'This takes about two minutes. You only do it once. ' +
+         'Start by tapping your phone company below.',
+  pickLabel: 'Who is your phone company?',
+  numberFallback: '[your ColdenJames number]',
+  testHeading: 'Now test it',
+  testLine: "Call your own number from another phone and don't answer. " +
+            'Within a minute, that phone should get a text from your business.',
+  testFail: "No text after a couple of minutes? Text Steven. Don't keep " +
+            'trying codes — a wrong one can send every call away from your phone.',
+  offHeading: 'Turning it off',
+  offLine: 'Whenever you want, this puts your phone back exactly as it was. ' +
+           'Your calls stop coming to us and go straight to your own voicemail again.',
+  notSureHeading: "Not sure which one you're on?",
+  notSureLine: "It's printed on your phone bill, or text Steven.",
+  unconfirmed: "Text Steven and he'll walk you through it.",
+  unconfirmedWhy: 'Your carrier does not publish steps for this, and guessing ' +
+                  'could send every call away from your phone instead of only the ones you miss.',
+  dialLabel: 'Tap to dial',
+  warnAlways: 'Do not pick the option that forwards every call. ' +
+              'You want the one for calls you do not answer.'
+};
+
 const NOT_FOUND = {
   title: 'Page not found',
   line: "This link doesn't match a page.",
@@ -263,6 +287,6 @@ const TERMS = {
 };
 
 module.exports = {
-  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND,
+  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND, SETUP,
   GOOGLE_PRIVACY, GOOGLE_MAPS_TERMS, CARRIER_SENTENCE
 };

@@ -1,5 +1,5 @@
 import { next, rewrite } from '@vercel/edge';
-import NOT_FOUND_PAGE from './site/notfound-page.js';
+import NOT_FOUND_PAGE, { robotsTxt, sitemapXml } from './site/notfound-page.js';
 
 /* Two sites, one Vercel project, told apart by the host.
 
@@ -34,8 +34,21 @@ const PAGES = {
   '/terms/': '/coldenjames/terms.html'
 };
 
+/* The setup page is for one client at a time, reached from a link Steven
+   texts them. It is a real page but it is nobody's search result, so it is
+   served like the others and then told to stay out of the index. */
+const PRIVATE_PAGES = {
+  '/setup': '/coldenjames/setup.html',
+  '/setup/': '/coldenjames/setup.html'
+};
+
 const INDEXABLE = 'index, follow';
 const HIDDEN = 'noindex, nofollow';
+
+const TEXT_FILES = {
+  '/robots.txt': ['text/plain; charset=utf-8', robotsTxt],
+  '/sitemap.xml': ['application/xml; charset=utf-8', sitemapXml]
+};
 
 export default function middleware(request) {
   const url = new URL(request.url);
@@ -48,6 +61,20 @@ export default function middleware(request) {
     url.protocol = 'https:';
     url.port = '';
     return Response.redirect(url.toString(), 308);
+  }
+
+  /* robots.txt and the sitemap exist on this host and nowhere else. */
+  const textFile = TEXT_FILES[url.pathname];
+  if (textFile) {
+    return new Response(textFile[1], {
+      status: 200,
+      headers: { 'Content-Type': textFile[0], 'X-Robots-Tag': HIDDEN }
+    });
+  }
+
+  const hidden = PRIVATE_PAGES[url.pathname];
+  if (hidden) {
+    return rewrite(new URL(hidden, url), { headers: { 'X-Robots-Tag': HIDDEN } });
   }
 
   const target = PAGES[url.pathname];

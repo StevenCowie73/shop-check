@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const C = require('./content.js');
+const { CARRIERS, READ_ON } = require('./carriers.js');
 
 const OUT = path.join(__dirname, '..', 'public', 'coldenjames');
 
@@ -115,6 +116,46 @@ footer nav a { margin-right: 18px; }
 }
 .back { display: inline-block; margin: 0 0 8px; font-size: 15px; }
 .updated { font-size: 15px; color: var(--muted); }
+
+/* ---- the setup page ---- */
+/* Read one-handed, outdoors, by someone who does not want to be doing this.
+   Nothing under 18px, nothing that needs a steady thumb. */
+.pick { display: grid; gap: 10px; margin: 18px 0 8px; }
+.pick button {
+  width: 100%; min-height: 62px; padding: 14px 18px;
+  font-family: inherit; font-size: 20px; font-weight: 600; text-align: left;
+  color: var(--ink); background: var(--surface);
+  border: 2px solid var(--line); border-radius: var(--radius);
+  cursor: pointer; touch-action: manipulation;
+}
+.pick button:hover { border-color: var(--ink); }
+.pick button[aria-pressed="true"] { border-color: var(--accent); background: var(--callout, #F3E7D3); }
+.pick .net { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.steps { margin: 0; padding: 0 0 0 28px; font-size: 18px; line-height: 1.55; }
+.steps li { margin: 0 0 12px; text-wrap: pretty; }
+.code {
+  display: block; margin: 18px 0 10px; padding: 18px 16px;
+  background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius);
+  /* shrinks rather than splitting: a number broken across two lines is a
+     number somebody types wrong */
+  font-size: clamp(21px, 6.5vw, 30px); font-weight: 700; letter-spacing: 0.01em;
+  text-align: center; line-height: 1.3; overflow-wrap: normal;
+}
+.code .num { display: block; margin-top: 6px; white-space: nowrap; }
+.dial {
+  display: block; min-height: 60px; padding: 16px;
+  background: var(--accent); color: #FFF7EE; border-radius: var(--radius);
+  font-size: 20px; font-weight: 700; text-align: center; text-decoration: none;
+  touch-action: manipulation;
+}
+.dial:hover { background: #A94314; color: #FFF7EE; }
+.warn {
+  border: 2px dashed var(--line); border-radius: var(--radius);
+  padding: 14px 16px; margin: 16px 0; font-size: 17px; font-weight: 600;
+}
+.sources { font-size: 14px; color: var(--muted); margin-top: 18px; }
+.sources a { color: var(--muted); }
+[hidden] { display: none !important; }
 
 @media (min-width: 700px) {
   body { font-size: 18px; }
@@ -241,6 +282,164 @@ ${footer()}`;
   });
 }
 
+function carrierBlock(c) {
+  if (!c.confirmed) {
+    return `<div class="panel" id="c-${esc(c.id)}" hidden>
+  <h3>${esc(c.name)}</h3>
+  <div class="warn">${esc(C.SETUP.unconfirmed)}</div>
+  <p>${esc(C.SETUP.unconfirmedWhy)}</p>
+  <p class="muted">${esc(c.why || '')}</p>
+</div>`;
+  }
+
+  const steps = c.steps.map(t => `<li>${esc(t)}</li>`).join('\n    ');
+  const off = c.offSteps.map(t => `<li>${esc(t)}</li>`).join('\n    ');
+
+  /* The dial code only appears where the carrier publishes one. Where the
+     steps go through the phone's own menu there is nothing to dial, and a
+     button that dialled something would be a guess. */
+  const codeBlock = c.method === 'code'
+    ? `<p class="code" data-code="${esc(c.code)}">${esc(c.code)} <span class="num">${esc(C.SETUP.numberFallback)}</span></p>
+  <a class="dial" data-dial="${esc(c.code)}" href="tel:${esc(c.code)}">${esc(C.SETUP.dialLabel)}</a>
+  <p>${esc(c.codeNote || '')}</p>`
+    : `<p class="code"><span class="num">${esc(C.SETUP.numberFallback)}</span></p>
+  <div class="warn">${esc(C.SETUP.warnAlways)}</div>`;
+
+  const offCode = c.offCode
+    ? `<p class="code">${esc(c.offCode)}</p>
+  <a class="dial" href="tel:${esc(c.offCode).replace(/#/g, '%23')}">${esc(C.SETUP.dialLabel)}</a>`
+    : '';
+
+  const sources = (c.sources || []).map(sr =>
+    `<a href="${esc(sr.url)}" rel="noopener">${esc(sr.label)}</a>`).join('<br>');
+
+  return `<div class="panel" id="c-${esc(c.id)}" hidden>
+  <h3>${esc(c.name)}</h3>
+  <ol class="steps">
+    ${steps}
+  </ol>
+  ${codeBlock}
+  ${c.caveat ? `<p>${esc(c.caveat)}</p>` : ''}
+
+  <h3>${esc(C.SETUP.offHeading)}</h3>
+  <p>${esc(C.SETUP.offLine)}</p>
+  <ol class="steps">
+    ${off}
+  </ol>
+  ${offCode}
+  ${c.cost ? `<p class="muted">${esc(c.cost)}</p>` : ''}
+  <p class="sources">Taken from ${esc(c.name)}'s own support pages, read ${esc(READ_ON)}:<br>${sources}</p>
+</div>`;
+}
+
+function setup() {
+  const buttons = CARRIERS.map(c =>
+    `<button type="button" data-carrier="${esc(c.id)}" aria-pressed="false">${esc(c.name)}` +
+    (c.network ? `<span class="net">${esc(c.network)}</span>` : '') +
+    `</button>`).join('\n    ');
+
+  const panels = CARRIERS.map(carrierBlock).join('\n\n');
+
+  const stevenLine = C.BUSINESS.phone
+    ? `<p><a href="tel:${esc(String(C.BUSINESS.phone).replace(/[^0-9+]/g, ''))}">Text Steven on ${esc(C.BUSINESS.phone)}</a></p>`
+    : '';
+
+  const body = `<header>
+  <h1>${esc(C.SETUP.title)}</h1>
+  <p class="tagline">${esc(C.SETUP.intro)}</p>
+</header>
+<div class="rule"></div>
+
+<h2>${esc(C.SETUP.pickLabel)}</h2>
+<div class="pick" id="pick">
+    ${buttons}
+</div>
+
+<div id="panels">
+${panels}
+</div>
+
+<div id="after" hidden>
+  <h2>${esc(C.SETUP.testHeading)}</h2>
+  <p>${esc(C.SETUP.testLine)}</p>
+  <p>${esc(C.SETUP.testFail)}</p>
+</div>
+
+<h2>${esc(C.SETUP.notSureHeading)}</h2>
+<p>${esc(C.SETUP.notSureLine)}</p>
+${stevenLine}
+
+${footer()}
+
+<script>
+(function () {
+  /* The number comes from the link Steven sends: ?n=+13185550100.
+     Anything that is not a plain E.164 number is ignored and the page keeps
+     saying "[your ColdenJames number]" — a wrong number here would be worse
+     than no number, because the client would set it and it would look done. */
+  var raw = new URLSearchParams(location.search).get('n') || '';
+  var number = /^[+][1-9][0-9]{6,14}$/.test(raw) ? raw : null;
+
+  if (number) {
+    var spans = document.querySelectorAll('.num');
+    for (var i = 0; i < spans.length; i++) spans[i].textContent = number;
+    var dials = document.querySelectorAll('.dial[data-dial]');
+    for (var j = 0; j < dials.length; j++) {
+      dials[j].setAttribute('href', 'tel:' + dials[j].getAttribute('data-dial') + number);
+    }
+  }
+
+  var panels = document.querySelectorAll('.panel');
+  var buttons = document.querySelectorAll('#pick button');
+  var after = document.getElementById('after');
+
+  function show(id) {
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].hidden = panels[i].id !== 'c-' + id;
+    }
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].setAttribute('aria-pressed', String(buttons[j].getAttribute('data-carrier') === id));
+    }
+    after.hidden = false;
+    var open = document.getElementById('c-' + id);
+    if (open) open.scrollIntoView({ block: 'start' });
+  }
+
+  for (var k = 0; k < buttons.length; k++) {
+    buttons[k].addEventListener('click', function () {
+      show(this.getAttribute('data-carrier'));
+    });
+  }
+})();
+</script>`;
+
+  return page({
+    title: C.SETUP.title + ' — ' + C.BUSINESS.brand,
+    description: C.SETUP.title,
+    body
+  });
+}
+
+function robotsTxt() {
+  return [
+    'User-agent: *',
+    'Disallow: /p/',
+    'Disallow: /setup',
+    '',
+    'Sitemap: https://' + C.BUSINESS.domain + '/sitemap.xml',
+    ''
+  ].join('\n');
+}
+
+function sitemapXml() {
+  const base = 'https://' + C.BUSINESS.domain;
+  const urls = ['/', '/privacy', '/terms']
+    .map(p => '  <url><loc>' + base + p + '</loc></url>')
+    .join('\n');
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + '\n</urlset>\n';
+}
+
 function notFound() {
   const body = `<header>
   <h1>${esc(C.NOT_FOUND.title)}</h1>
@@ -264,7 +463,10 @@ function build() {
     'index.html': home(),
     'privacy.html': legal(C.PRIVACY, 'privacy'),
     'terms.html': legal(C.TERMS, 'terms'),
-    '404.html': notFound()
+    'setup.html': setup(),
+    '404.html': notFound(),
+    'robots.txt': robotsTxt(),
+    'sitemap.xml': sitemapXml()
   };
   const written = [];
   for (const [name, html] of Object.entries(files)) {
@@ -277,7 +479,9 @@ function build() {
      read the filesystem, so the same HTML is also written as a module it
      can import. Generated from the same function: they cannot drift. */
   const module_ = "/* Generated by site/build.js — do not edit. Run: npm run site:build */\n" +
-    'export default ' + JSON.stringify(files['404.html']) + ';\n';
+    'export default ' + JSON.stringify(files['404.html']) + ';\n' +
+    'export const robotsTxt = ' + JSON.stringify(files['robots.txt']) + ';\n' +
+    'export const sitemapXml = ' + JSON.stringify(files['sitemap.xml']) + ';\n';
   const modulePath = path.join(__dirname, 'notfound-page.js');
   const wasModule = fs.existsSync(modulePath) ? fs.readFileSync(modulePath, 'utf8') : null;
   fs.writeFileSync(modulePath, module_);
@@ -299,4 +503,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, home, legal, notFound, page, CSS };
+module.exports = { build, home, legal, notFound, setup, robotsTxt, sitemapXml, page, CSS };

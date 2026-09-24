@@ -205,7 +205,7 @@ test('the terms carry the Google clause and the commercial terms', () => {
 /* ---------- house style ---------- */
 
 test('no page uses the word AI in visible copy, and no emoji', () => {
-  for (const name of ['index.html', 'privacy.html', 'terms.html', '404.html']) {
+  for (const name of ['index.html', 'privacy.html', 'terms.html', '404.html', 'setup.html']) {
     const html = fs.readFileSync(path.join(OUT, name), 'utf8');
     const visible = html
       .replace(/<style[\s\S]*?<\/style>/g, ' ')
@@ -227,6 +227,134 @@ test('no page asks only happy customers for a review', () => {
   }
   const home = fs.readFileSync(path.join(OUT, 'index.html'), 'utf8');
   assert.ok(home.includes('Every customer whose job is done gets asked, once.'));
+});
+
+/* ---------- the setup page ---------- */
+
+const { CARRIERS } = require('../site/carriers.js');
+
+test('/setup is served, and is never indexable', async () => {
+  for (const p of ['/setup', '/setup/']) {
+    const res = middleware(req('coldenjames.com', p));
+    assert.match(rewriteTarget(res) || '', /\/coldenjames\/setup\.html$/, p + ' serves the page');
+    assert.strictEqual(res.headers.get('x-robots-tag'), 'noindex, nofollow', p + ' is hidden');
+  }
+});
+
+test('/setup is not in the sitemap', () => {
+  const xml = fs.readFileSync(path.join(OUT, 'sitemap.xml'), 'utf8');
+  assert.strictEqual(xml.includes('/setup'), false);
+});
+
+test('the ?n= number is only accepted as E.164', () => {
+  const html = fs.readFileSync(path.join(OUT, 'setup.html'), 'utf8');
+  /* pull the page's own validation regex out of the page and run it, so the
+     test cannot pass while the shipped page validates something else */
+  const m = /test\(raw\)[\s\S]{0,40}?/.exec(html);
+  const src = /var number = (\/.+?\/)\.test\(raw\)/.exec(html);
+  assert.ok(src, 'the page carries an inline validation regex');
+  const re = new RegExp(src[1].slice(1, -1));
+  for (const good of ['+13185550100', '+447700900123']) {
+    assert.strictEqual(re.test(good), true, good + ' should be accepted');
+  }
+  for (const bad of ['3185550100', '+0185550100', '(318) 555-0100', '+1 318 555 0100',
+                     '', 'javascript:alert(1)', '+1318555010012345678', 'tel:+13185550100']) {
+    assert.strictEqual(re.test(bad), false, JSON.stringify(bad) + ' should be rejected');
+  }
+});
+
+test('with no usable number the page still says what to dial', () => {
+  const html = fs.readFileSync(path.join(OUT, 'setup.html'), 'utf8');
+  assert.ok(html.includes('[your ColdenJames number]'), 'the fallback is printed');
+});
+
+test('an unconfirmed carrier tells them to text Steven instead of guessing', () => {
+  const html = fs.readFileSync(path.join(OUT, 'setup.html'), 'utf8');
+  for (const c of CARRIERS.filter(x => !x.confirmed)) {
+    const block = html.split('id="c-' + c.id + '"')[1];
+    assert.ok(block, c.name + ' has a panel');
+    const panel = block.split('</div>')[0] + (block.split('class="panel"')[0] || '');
+    const upTo = block.slice(0, block.indexOf('id="c-') === -1 ? 2000 : block.indexOf('id="c-'));
+    assert.ok(upTo.includes("Text Steven and he'll walk you through it."),
+      c.name + ' must say text Steven');
+    assert.strictEqual(/class="code"/.test(upTo), false, c.name + ' must show no dial code');
+    assert.strictEqual(/href="tel:\*/.test(upTo), false, c.name + ' must offer no tap-to-dial');
+  }
+});
+
+test('a confirmed carrier shows steps, and a dial code only if the carrier publishes one', () => {
+  const html = fs.readFileSync(path.join(OUT, 'setup.html'), 'utf8');
+  for (const c of CARRIERS.filter(x => x.confirmed)) {
+    const block = html.split('id="c-' + c.id + '"')[1];
+    const upTo = block.slice(0, block.indexOf('id="c-') === -1 ? block.length : block.indexOf('id="c-'));
+    assert.ok(upTo.includes('<ol class="steps">'), c.name + ' has numbered steps');
+    assert.ok(upTo.includes('Taken from'), c.name + ' cites its source');
+    for (const src of c.sources) assert.ok(upTo.includes(src.url), c.name + ' links ' + src.url);
+    if (c.method === 'code') {
+      assert.ok(upTo.includes('data-dial="' + c.code + '"'), c.name + ' offers tap-to-dial');
+    } else {
+      assert.strictEqual(upTo.includes('data-dial='), false,
+        c.name + ' must not offer a dial code it does not have');
+    }
+  }
+});
+
+test('every carrier entry carries a source or an explicit reason it could not be confirmed', () => {
+  for (const c of CARRIERS) {
+    if (c.confirmed) {
+      assert.ok(c.sources.length, c.name + ' must cite a source');
+      for (const s of c.sources) assert.match(s.url, /^https:\/\//, c.name + ' source is a URL');
+      assert.ok(c.steps && c.steps.length, c.name + ' must have steps');
+      assert.ok(c.offSteps && c.offSteps.length, c.name + ' must say how to turn it off');
+    } else {
+      assert.ok(c.why && c.why.length > 30, c.name + ' must say why it is not confirmed');
+    }
+  }
+});
+
+test('no carrier claims a ring time that its own pages do not state', () => {
+  for (const c of CARRIERS.filter(x => x.confirmed)) {
+    assert.match(c.ringTime, /not confirmed/,
+      c.name + ' — no carrier page stated a ring time, so none may be claimed');
+  }
+});
+
+/* ---------- robots and sitemap ---------- */
+
+test('robots.txt points at the sitemap and hides /p/ and /setup', async () => {
+  const res = middleware(req('coldenjames.com', '/robots.txt'));
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/plain/);
+  const txt = await res.text();
+  assert.match(txt, /^User-agent: \*/m);
+  assert.match(txt, /^Disallow: \/p\/$/m);
+  assert.match(txt, /^Disallow: \/setup$/m);
+  assert.match(txt, /^Sitemap: https:\/\/coldenjames\.com\/sitemap\.xml$/m);
+});
+
+test('the sitemap lists exactly the three public pages', async () => {
+  const res = middleware(req('coldenjames.com', '/sitemap.xml'));
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type'), /xml/);
+  const xml = await res.text();
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
+  assert.deepStrictEqual(locs, [
+    'https://coldenjames.com/',
+    'https://coldenjames.com/privacy',
+    'https://coldenjames.com/terms'
+  ]);
+});
+
+test('robots.txt and the sitemap exist on no other host', async () => {
+  for (const host of ['signal.cowie.ai', 'signal-abc.vercel.app']) {
+    for (const p of ['/robots.txt', '/sitemap.xml', '/setup']) {
+      const res = middleware(req(host, p));
+      assert.strictEqual(rewriteTarget(res), null, host + p + ' untouched');
+      /* next() is a pass-through: it carries x-middleware-next and no body */
+      assert.strictEqual(res.headers.get('x-middleware-next'), '1',
+        host + p + ' must be passed straight through, not served by us');
+    }
+  }
 });
 
 test('the palette and font are the project ones', () => {

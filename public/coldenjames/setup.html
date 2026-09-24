@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Set up your missed-call text — ColdenJames</title>
+<meta name="description" content="Set up your missed-call text">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ground: #F4EFE6;
+  --surface: #FBF8F2;
+  --ink: #1C1917;
+  --muted: #5C5650;
+  --line: #CFC6B6;
+  --accent: #C4501B;
+  --radius: 8px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 640px; margin: 0 auto; padding: 0 20px 56px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { color: var(--ink); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header { padding: 44px 0 28px; }
+h1 {
+  margin: 0;
+  font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+}
+.tagline {
+  margin: 14px 0 0; font-size: 18px; line-height: 1.5;
+  color: var(--muted); text-wrap: pretty; max-width: 30em;
+}
+.rule { height: 2px; background: var(--line); margin: 0 0 32px; }
+
+h2 {
+  margin: 34px 0 8px;
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--muted);
+}
+h3 { margin: 26px 0 6px; font-size: 21px; font-weight: 600; line-height: 1.25; }
+p { margin: 0 0 14px; text-wrap: pretty; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 22px 8px;
+  margin: 22px 0;
+}
+.price { font-size: 32px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
+.price-points { margin: 0; padding: 0; list-style: none; }
+.price-points li {
+  position: relative; padding: 6px 0 6px 20px; font-size: 17px;
+  border-top: 1px solid var(--line);
+}
+.price-points li:first-child { border-top: 0; }
+.price-points li::before {
+  content: ""; position: absolute; left: 0; top: 15px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+}
+.note {
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin: 30px 0;
+  font-size: 17px; line-height: 1.55; text-wrap: pretty;
+}
+.contact { margin: 6px 0 0; }
+.contact dt {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--muted); margin-top: 14px;
+}
+.contact dt:first-child { margin-top: 0; }
+.contact dd { margin: 2px 0 0; font-size: 19px; }
+
+footer {
+  border-top: 2px solid var(--line);
+  margin-top: 44px; padding-top: 22px;
+  font-size: 15px; color: var(--muted); line-height: 1.5;
+}
+footer p { margin: 0 0 10px; }
+footer nav a { margin-right: 18px; }
+
+.draft {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px 16px; margin: 0 0 26px;
+  font-size: 15px; font-weight: 600;
+}
+.back { display: inline-block; margin: 0 0 8px; font-size: 15px; }
+.updated { font-size: 15px; color: var(--muted); }
+
+/* ---- the setup page ---- */
+/* Read one-handed, outdoors, by someone who does not want to be doing this.
+   Nothing under 18px, nothing that needs a steady thumb. */
+.pick { display: grid; gap: 10px; margin: 18px 0 8px; }
+.pick button {
+  width: 100%; min-height: 62px; padding: 14px 18px;
+  font-family: inherit; font-size: 20px; font-weight: 600; text-align: left;
+  color: var(--ink); background: var(--surface);
+  border: 2px solid var(--line); border-radius: var(--radius);
+  cursor: pointer; touch-action: manipulation;
+}
+.pick button:hover { border-color: var(--ink); }
+.pick button[aria-pressed="true"] { border-color: var(--accent); background: var(--callout, #F3E7D3); }
+.pick .net { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.steps { margin: 0; padding: 0 0 0 28px; font-size: 18px; line-height: 1.55; }
+.steps li { margin: 0 0 12px; text-wrap: pretty; }
+.code {
+  display: block; margin: 18px 0 10px; padding: 18px 16px;
+  background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius);
+  /* shrinks rather than splitting: a number broken across two lines is a
+     number somebody types wrong */
+  font-size: clamp(21px, 6.5vw, 30px); font-weight: 700; letter-spacing: 0.01em;
+  text-align: center; line-height: 1.3; overflow-wrap: normal;
+}
+.code .num { display: block; margin-top: 6px; white-space: nowrap; }
+.dial {
+  display: block; min-height: 60px; padding: 16px;
+  background: var(--accent); color: #FFF7EE; border-radius: var(--radius);
+  font-size: 20px; font-weight: 700; text-align: center; text-decoration: none;
+  touch-action: manipulation;
+}
+.dial:hover { background: #A94314; color: #FFF7EE; }
+.warn {
+  border: 2px dashed var(--line); border-radius: var(--radius);
+  padding: 14px 16px; margin: 16px 0; font-size: 17px; font-weight: 600;
+}
+.sources { font-size: 14px; color: var(--muted); margin-top: 18px; }
+.sources a { color: var(--muted); }
+[hidden] { display: none !important; }
+
+@media (min-width: 700px) {
+  body { font-size: 18px; }
+  h1 { font-size: 52px; }
+  .wrap { padding-bottom: 72px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Set up your missed-call text</h1>
+  <p class="tagline">This takes about two minutes. You only do it once. Start by tapping your phone company below.</p>
+</header>
+<div class="rule"></div>
+
+<h2>Who is your phone company?</h2>
+<div class="pick" id="pick">
+    <button type="button" data-carrier="att" aria-pressed="false">AT&amp;T<span class="net">AT&amp;T network</span></button>
+    <button type="button" data-carrier="verizon" aria-pressed="false">Verizon<span class="net">Verizon network</span></button>
+    <button type="button" data-carrier="tmobile" aria-pressed="false">T-Mobile<span class="net">T-Mobile network</span></button>
+    <button type="button" data-carrier="straighttalk" aria-pressed="false">Straight Talk<span class="net">Runs on more than one network</span></button>
+    <button type="button" data-carrier="cricket" aria-pressed="false">Cricket<span class="net">AT&amp;T network</span></button>
+    <button type="button" data-carrier="metro" aria-pressed="false">Metro by T-Mobile<span class="net">T-Mobile network</span></button>
+    <button type="button" data-carrier="visible" aria-pressed="false">Visible<span class="net">Verizon network</span></button>
+    <button type="button" data-carrier="boost" aria-pressed="false">Boost Mobile<span class="net">Boost, AT&amp;T or T-Mobile</span></button>
+    <button type="button" data-carrier="other" aria-pressed="false">Something else</button>
+</div>
+
+<div id="panels">
+<div class="panel" id="c-att" hidden>
+  <h3>AT&amp;T</h3>
+  <ol class="steps">
+    <li>Open the Phone app.</li>
+    <li>Tap the menu button — three dots, usually top right.</li>
+    <li>Tap Settings, then Calling accounts. If you see two SIMs, pick the one with your business number.</li>
+    <li>Tap Call forwarding.</li>
+    <li>Tap When unanswered. Do NOT tap Always forward.</li>
+    <li>Enter the number below, then tap Turn on.</li>
+    <li>Go back and do the same for When busy and When unreachable.</li>
+  </ol>
+  <p class="code"><span class="num">[your ColdenJames number]</span></p>
+  <div class="warn">Do not pick the option that forwards every call. You want the one for calls you do not answer.</div>
+  <p>These steps are the ones AT&amp;T publishes for Android. AT&amp;T does not publish conditional-forwarding steps for iPhone, so if you are on an iPhone, text Steven.</p>
+
+  <h3>Turning it off</h3>
+  <p>Whenever you want, this puts your phone back exactly as it was. Your calls stop coming to us and go straight to your own voicemail again.</p>
+  <ol class="steps">
+    <li>Open the Phone app.</li>
+    <li>Tap the menu button, then Settings, then Calling accounts, then Call forwarding.</li>
+    <li>Tap When unanswered, then Turn off. Do the same for When busy and When unreachable.</li>
+  </ol>
+  
+  <p class="muted">AT&amp;T states forwarded calls are billed for the length of the call, and may add long distance or roaming charges. On some plans forwarded minutes are not counted against plan minutes.</p>
+  <p class="sources">Taken from AT&amp;T's own support pages, read 24 September 2026:<br><a href="https://www.att.com/device-support/article/141868/att/motivate-pro-2-5g/" rel="noopener">AT&amp;T device support — setting up call forwarding (Android)</a><br><a href="https://www.att.com/support/article/wireless/KM1011513/" rel="noopener">AT&amp;T Wireless — Call Forwarding for Wireless</a></p>
+</div>
+
+<div class="panel" id="c-verizon" hidden>
+  <h3>Verizon</h3>
+  <ol class="steps">
+    <li>Open the Phone app, as if you were making a call.</li>
+    <li>Dial the code below exactly — the star, 7, 1, then the number.</li>
+    <li>Press call. The line will beep or read a short message, then end.</li>
+    <li>That's it. Calls you don't answer now come to us.</li>
+  </ol>
+  <p class="code" data-code="*71">*71 <span class="num">[your ColdenJames number]</span></p>
+  <a class="dial" data-dial="*71" href="tel:*71">Tap to dial</a>
+  <p>Dial *71 then your ColdenJames number, with no spaces, then press call.</p>
+  <p>Verizon states this will not forward to a number outside the United States, and that on an iPhone with Live Voicemail switched on it may not work until Live Voicemail is turned off.</p>
+
+  <h3>Turning it off</h3>
+  <p>Whenever you want, this puts your phone back exactly as it was. Your calls stop coming to us and go straight to your own voicemail again.</p>
+  <ol class="steps">
+    <li>Open the Phone app.</li>
+    <li>Dial *73 and press call.</li>
+    <li>Verizon turns call forwarding off.</li>
+  </ol>
+  <p class="code">*73</p>
+  <a class="dial" href="tel:*73">Tap to dial</a>
+  <p class="muted">Verizon states there is no monthly fee for Call Forwarding on most plans, that a fee may apply on certain older plans, and that you are billed for a forwarded call as if you had answered it.</p>
+  <p class="sources">Taken from Verizon's own support pages, read 24 September 2026:<br><a href="https://www.verizon.com/support/call-forwarding-faqs/" rel="noopener">Verizon — Call Forwarding FAQs</a></p>
+</div>
+
+<div class="panel" id="c-tmobile" hidden>
+  <h3>T-Mobile</h3>
+  <ol class="steps">
+    <li>Open the Phone app.</li>
+    <li>Tap the menu button — three dots, usually top right.</li>
+    <li>Tap Settings, then Call forwarding.</li>
+    <li>Choose the option for calls you do not answer. Do NOT choose the one that forwards all calls.</li>
+    <li>Enter the number below and turn it on.</li>
+    <li>Do the same for the busy and unreachable options if your phone lists them.</li>
+  </ol>
+  <p class="code"><span class="num">[your ColdenJames number]</span></p>
+  <div class="warn">Do not pick the option that forwards every call. You want the one for calls you do not answer.</div>
+  <p>T-Mobile states you can only forward to a 10 or 11 digit number and not to an international number. T-Mobile sends you to a tutorial for your exact handset, so the menu wording may differ slightly from the steps above.</p>
+
+  <h3>Turning it off</h3>
+  <p>Whenever you want, this puts your phone back exactly as it was. Your calls stop coming to us and go straight to your own voicemail again.</p>
+  <ol class="steps">
+    <li>Open the Phone app, as if you were making a call.</li>
+    <li>Dial ##004# and press call.</li>
+    <li>T-Mobile resets the busy, unreachable and no-reply forwarding on your line.</li>
+  </ol>
+  <p class="code">##004#</p>
+  <a class="dial" href="tel:%23%23004%23">Tap to dial</a>
+  <p class="muted">not confirmed — T-Mobile does not state a charge for call forwarding on the page read</p>
+  <p class="sources">Taken from T-Mobile's own support pages, read 24 September 2026:<br><a href="https://www.t-mobile.com/support/plans-features/calling-services" rel="noopener">T-Mobile — Calling services (call forwarding)</a><br><a href="https://www.t-mobile.com/support/devices/device-troubleshooting/cant-call-dropped-calls-and-other-calling-issues" rel="noopener">T-Mobile — Can't call, dropped calls &amp; other calling issues (##004# reset)</a></p>
+</div>
+
+<div class="panel" id="c-straighttalk" hidden>
+  <h3>Straight Talk</h3>
+  <ol class="steps">
+    <li>Open the Phone app.</li>
+    <li>Tap the menu button — three dots.</li>
+    <li>Tap Settings, then Supplementary services.</li>
+    <li>Tap Call forwarding.</li>
+    <li>Tap the option for calls you do not answer — not the one that forwards everything.</li>
+    <li>Enter 1, then the number below, then tap Turn on.</li>
+  </ol>
+  <p class="code"><span class="num">[your ColdenJames number]</span></p>
+  <div class="warn">Do not pick the option that forwards every call. You want the one for calls you do not answer.</div>
+  <p>Straight Talk's own tutorial says call forwarding is only available in select areas and on select handsets, and it does not name the individual busy, unanswered and unreachable options. If the option for unanswered calls is not there, text Steven.</p>
+
+  <h3>Turning it off</h3>
+  <p>Whenever you want, this puts your phone back exactly as it was. Your calls stop coming to us and go straight to your own voicemail again.</p>
+  <ol class="steps">
+    <li>Open the Phone app, tap the menu button, then Settings.</li>
+    <li>Tap Supplementary services, then Call forwarding.</li>
+    <li>Tap the same option you turned on, then tap Turn off.</li>
+  </ol>
+  
+  <p class="muted">not confirmed — Straight Talk does not state a charge on the page read</p>
+  <p class="sources">Taken from Straight Talk's own support pages, read 24 September 2026:<br><a href="https://support.straighttalk.com/tutorials/calls/call-forwarding/?device=samsung-galaxy-s22-5g-s901u1" rel="noopener">Straight Talk — Call Forwarding tutorial (Samsung Galaxy S22)</a></p>
+</div>
+
+<div class="panel" id="c-cricket" hidden>
+  <h3>Cricket</h3>
+  <div class="warn">Text Steven and he'll walk you through it.</div>
+  <p>Your carrier does not publish steps for this, and guessing could send every call away from your phone instead of only the ones you miss.</p>
+  <p class="muted">Cricket's Available Features page lists Call Forwarding by name and says nothing else about it, and its Dialing Shortcuts page carries no forwarding codes at all. Nothing on cricketwireless.com states how to forward only unanswered calls.</p>
+</div>
+
+<div class="panel" id="c-metro" hidden>
+  <h3>Metro by T-Mobile</h3>
+  <div class="warn">Text Steven and he'll walk you through it.</div>
+  <p>Your carrier does not publish steps for this, and guessing could send every call away from your phone instead of only the ones you miss.</p>
+  <p class="muted">No page on metrobyt-mobile.com sets out call forwarding steps or codes. Every set of instructions found was on a third-party site, and several of those contradict each other about whether Metro charges a monthly fee for the feature.</p>
+</div>
+
+<div class="panel" id="c-visible" hidden>
+  <h3>Visible</h3>
+  <div class="warn">Text Steven and he'll walk you through it.</div>
+  <p>Your carrier does not publish steps for this, and guessing could send every call away from your phone instead of only the ones you miss.</p>
+  <p class="muted">Visible's own help pages do not cover call forwarding. Visible's community forum carries repeated reports that conditional forwarding codes are rejected on Visible lines, but forum posts are customers talking to each other, not Visible documentation, so this is not something to set up blind.</p>
+</div>
+
+<div class="panel" id="c-boost" hidden>
+  <h3>Boost Mobile</h3>
+  <div class="warn">Text Steven and he'll walk you through it.</div>
+  <p>Your carrier does not publish steps for this, and guessing could send every call away from your phone instead of only the ones you miss.</p>
+  <p class="muted">Boost's device-help pages would not load when checked. What is indexed from them describes forwarding that stops the phone ringing at all, which is forwarding every call — the opposite of what we want. Nothing confirms Boost supports forwarding only unanswered calls.</p>
+</div>
+
+<div class="panel" id="c-other" hidden>
+  <h3>Something else</h3>
+  <div class="warn">Text Steven and he'll walk you through it.</div>
+  <p>Your carrier does not publish steps for this, and guessing could send every call away from your phone instead of only the ones you miss.</p>
+  <p class="muted">Every carrier is different, and a wrong code sends every call away from your phone instead of only the ones you miss.</p>
+</div>
+</div>
+
+<div id="after" hidden>
+  <h2>Now test it</h2>
+  <p>Call your own number from another phone and don't answer. Within a minute, that phone should get a text from your business.</p>
+  <p>No text after a couple of minutes? Text Steven. Don't keep trying codes — a wrong one can send every call away from your phone.</p>
+</div>
+
+<h2>Not sure which one you're on?</h2>
+<p>It's printed on your phone bill, or text Steven.</p>
+
+
+<footer>
+  <p>ColdenJames is a trade name of COWIE.AI LLC, Bossier City, Louisiana.</p>
+  <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+</footer>
+
+<script>
+(function () {
+  /* The number comes from the link Steven sends: ?n=+13185550100.
+     Anything that is not a plain E.164 number is ignored and the page keeps
+     saying "[your ColdenJames number]" — a wrong number here would be worse
+     than no number, because the client would set it and it would look done. */
+  var raw = new URLSearchParams(location.search).get('n') || '';
+  var number = /^[+][1-9][0-9]{6,14}$/.test(raw) ? raw : null;
+
+  if (number) {
+    var spans = document.querySelectorAll('.num');
+    for (var i = 0; i < spans.length; i++) spans[i].textContent = number;
+    var dials = document.querySelectorAll('.dial[data-dial]');
+    for (var j = 0; j < dials.length; j++) {
+      dials[j].setAttribute('href', 'tel:' + dials[j].getAttribute('data-dial') + number);
+    }
+  }
+
+  var panels = document.querySelectorAll('.panel');
+  var buttons = document.querySelectorAll('#pick button');
+  var after = document.getElementById('after');
+
+  function show(id) {
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].hidden = panels[i].id !== 'c-' + id;
+    }
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].setAttribute('aria-pressed', String(buttons[j].getAttribute('data-carrier') === id));
+    }
+    after.hidden = false;
+    var open = document.getElementById('c-' + id);
+    if (open) open.scrollIntoView({ block: 'start' });
+  }
+
+  for (var k = 0; k < buttons.length; k++) {
+    buttons[k].addEventListener('click', function () {
+      show(this.getAttribute('data-carrier'));
+    });
+  }
+})();
+</script>
+</div>
+</body>
+</html>
