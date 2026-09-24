@@ -39,6 +39,24 @@ URL rather than creating a new one, keep it private, and never share it.
 The same care applies to `finder/.env`, which holds the Google API key: never
 commit it, and never print the key.
 
+This has been got wrong before, and not by committing a data file — by
+naming a real business in a code comment as an example. A pre-commit hook
+now catches that:
+
+```
+npm run hooks:install
+```
+
+It points git at `hooks/`, and `hooks/pre-commit` runs
+`scripts/check-private-names.js`. That reads every company name and
+qualifying-party name out of whichever private files exist locally
+(`finder/out/`, `finder/pilot/out/`) and refuses the commit if one appears in
+a staged file. On a machine with no prospect data there is nothing to check
+and it passes, so a fresh clone is never blocked. Check the whole repository
+at any time with `npm run check:names`.
+
+**Use an invented business name in every example, comment and docstring.**
+
 ## Version control
 
 - **Commit and push to `main`.** Do not create feature branches. A previous

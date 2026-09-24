@@ -3,9 +3,9 @@
 /* Facts you or I established by hand, which the Places API does not know
    and a re-run would otherwise throw away.
 
-   Google does not list 318 Tile Pro's website, so every run of
-   find-prospects.js scores them as having none. An override says
-   otherwise, permanently.
+   Say Greenfield Tiling has a website but Google does not list it: every
+   run of find-prospects.js would score them as having none. An override
+   says otherwise, permanently.
 
    The file is finder/overrides.json, keyed by place id, and it is
    git-ignored because its contents are tied to real businesses. See

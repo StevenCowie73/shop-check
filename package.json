@@ -9,5 +9,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "hooks:install": "node scripts/install-hooks.js",
+    "check:names": "node scripts/check-private-names.js --all"
   }
 }

@@ -4,8 +4,8 @@
 /* The single-business lookup, from a terminal. Same code path as the web
    endpoint — this is how you test a change without deploying.
 
-   Run:  node lookup-cli.js "Pace Plumbing Haughton LA"
-         node lookup-cli.js "Hometown Fence Co" --json
+   Run:  node lookup-cli.js "Greenfield Tiling Haughton LA"
+         node lookup-cli.js "Marsh Lane Fencing" --json
 */
 
 const path = require('path');
