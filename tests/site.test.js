@@ -485,6 +485,26 @@ test('the wordmark and icon are outlines in the brand colours, split at each let
     assert.strictEqual(/linear-gradient|<linearGradient/.test(svg), false, name + ' is a hard split, no blend');
   }
   assert.strictEqual((WORDMARK.match(/<clipPath/g) || []).length, 2, 'the C and the J, nothing else');
+  /* The outline: an ink stroke painted under the fill, on the C and the J
+     only, and only on their whole-letter (blue) layer, so it never runs
+     along the split. */
+  const stroked = WORDMARK.match(/<path [^>]*stroke=[^>]*>/g) || [];
+  assert.strictEqual(stroked.length, 2, 'exactly two outlined paths: the C and the J');
+  for (const pth of stroked) {
+    assert.match(pth, /fill="#3F7FC0"/, 'the outline is on the whole-letter layer');
+    assert.match(pth, /stroke="#1C1917"/);
+    assert.match(pth, /stroke-width="50"/, '25 units showing outside the letter');
+    assert.match(pth, /paint-order="stroke"/, 'drawn under the fill, outside the letter');
+  }
+  assert.strictEqual(/<path [^>]*fill="#C4501B"[^>]*stroke=/.test(WORDMARK), false, 'the rust half has no stroke');
+  assert.strictEqual(/<path fill="#1C1917"[^>]*stroke=/.test(WORDMARK), false, 'the other letters have no stroke');
+  const { TOUCH_ICON } = require('../site/brand-svg.js');
+  for (const [name, svg] of [['icon', ICON], ['touch icon', TOUCH_ICON]]) {
+    assert.strictEqual((svg.match(/paint-order="stroke"/g) || []).length, 1, name + ' uses the outlined C');
+    assert.strictEqual(/<text|<tspan|font-family/.test(svg), false, name + ' has no live text');
+  }
+  const side = svg => Number(/viewBox="0 0 ([\d.]+)/.exec(svg)[1]);
+  assert.ok(side(ICON) < side(TOUCH_ICON), 'the tab icon is cropped tighter than the home-screen icon');
   assert.ok(WORDMARK.includes('fill="#1C1917"'), 'the rest is ink');
   assert.ok(ICON.includes('fill="#F4EFE6"'), 'the icon sits on cream');
   for (const f of ['wordmark.svg', 'icon.svg']) {

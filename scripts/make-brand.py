@@ -6,6 +6,11 @@ whether or not the font is loaded. The C and the J are split across their
 own middle: rust above (red hair), blue below (blue eyes). The split is
 done by drawing the whole letter in blue and the same letter in rust
 clipped to its top half, so there is no hairline gap where the halves meet.
+The two split letters carry a thin ink outline drawn outside the letter:
+the stroke is twice the wanted width and painted under the fill
+(paint-order="stroke"), so the inner half is covered and the rust and blue
+keep their full size. The outline belongs to the blue layer, which is the
+whole letter, so it follows the letter's edge and never the split.
 
 Writes public/brand/wordmark.svg, public/brand/icon.svg and
 site/brand-svg.js (the same drawings as strings, for inlining).
@@ -34,6 +39,9 @@ BLUE = '#3F7FC0'
 CREAM = '#F4EFE6'
 TRACKING = -0.02          # em
 SPLIT = {0, 6}            # the C and the J
+OUTLINE = 25              # font units visible outside the letter (~1px at 40px letters)
+ICON_FILL = 0.80          # tab icon: the outlined C spans this much of the square
+TOUCH_ROOM = 1.44         # home-screen icon: square side / C, the roomier one
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 
@@ -73,7 +81,7 @@ def main(font_path):
     all_b = [bounds(n, dx, dy) for n, dx, dy, _ in placed]
     x0 = min(b[0] for b in all_b); x1 = max(b[2] for b in all_b)
     y0 = min(b[1] for b in all_b); y1 = max(b[3] for b in all_b)
-    pad = 0.02 * upm
+    pad = OUTLINE + 5          # room for the outline at the edges
 
     # SVG space: origin at the top-left of the padded ink box, y down.
     def to_svg(dx, dy):
@@ -88,6 +96,9 @@ def main(font_path):
     height = y1 - y0 + 2 * pad
 
     ink_paths, split_letters = [], []
+    global STROKE
+    STROKE = (f'stroke="{INK}" stroke-width="{2 * OUTLINE}" stroke-linejoin="round" '
+              f'paint-order="stroke"')
     for idx, ((name, dx, dy, cluster), b) in enumerate(zip(placed, all_b)):
         d = path_of(name, dx, dy)
         if cluster in SPLIT:
@@ -106,7 +117,7 @@ def main(font_path):
             # Generous on three sides; exact at the middle.
             defs.append(f'<clipPath id="{cid}"><rect x="{fmt(left - 20)}" y="{fmt(top - 20)}" '
                         f'width="{fmt(w + 40)}" height="{fmt(mid - top + 20)}"/></clipPath>')
-            body.append(f'<path fill="{BLUE}" d="{d}"/>')
+            body.append(f'<path fill="{BLUE}" {STROKE} d="{d}"/>')
             body.append(f'<path fill="{RUST}" clip-path="url(#{cid})" d="{d}"/>')
         return defs, body
 
@@ -121,27 +132,31 @@ def main(font_path):
         f'{"".join(split_body)}</svg>'
     )
 
-    # ---- the icon: the split C alone, centred on cream ----
+    # ---- the icons: the outlined, split C alone, centred on cream ----
     name, dx, dy, _ = placed[0]
     cb = bounds(name, 0, 0)
     cw, ch = cb[2] - cb[0], cb[3] - cb[1]
-    side = max(cw, ch) * 1.44          # breathing room: about a fifth on each side
-    ox = (side - cw) / 2 - cb[0]
-    oy = (side - ch) / 2 + cb[3]
-    sp = SVGPathPen(glyphs, ntos=fmt)
-    glyphs[name].draw(TransformPen(sp, (1, 0, 0, -1, ox, oy)))
-    cd = sp.getCommands()
-    ctop = (side - ch) / 2
-    cmid = side / 2
-    icon = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {fmt(side)} {fmt(side)}" '
-        f'role="img" aria-label="ColdenJames">'
-        f'<title>ColdenJames</title>'
-        f'<defs><clipPath id="cj-icon-top"><rect x="0" y="0" width="{fmt(side)}" height="{fmt(cmid)}"/></clipPath></defs>'
-        f'<rect width="{fmt(side)}" height="{fmt(side)}" fill="{CREAM}"/>'
-        f'<path fill="{BLUE}" d="{cd}"/>'
-        f'<path fill="{RUST}" clip-path="url(#cj-icon-top)" d="{cd}"/></svg>'
-    )
+
+    def icon_svg(side, clip_id):
+        ox = (side - cw) / 2 - cb[0]
+        oy = (side - ch) / 2 + cb[3]
+        sp = SVGPathPen(glyphs, ntos=fmt)
+        glyphs[name].draw(TransformPen(sp, (1, 0, 0, -1, ox, oy)))
+        cd = sp.getCommands()
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {fmt(side)} {fmt(side)}" '
+            f'role="img" aria-label="ColdenJames">'
+            f'<title>ColdenJames</title>'
+            f'<defs><clipPath id="{clip_id}"><rect x="0" y="0" width="{fmt(side)}" height="{fmt(side / 2)}"/></clipPath></defs>'
+            f'<rect width="{fmt(side)}" height="{fmt(side)}" fill="{CREAM}"/>'
+            f'<path fill="{BLUE}" {STROKE} d="{cd}"/>'
+            f'<path fill="{RUST}" clip-path="url(#{clip_id})" d="{cd}"/></svg>'
+        )
+
+    # Browser tabs: tight, so the C still reads at 16px.
+    icon = icon_svg((max(cw, ch) + 2 * OUTLINE) / ICON_FILL, 'cj-icon-top')
+    # Home screens: the roomier square, which the phone masks and rounds.
+    touch_icon = icon_svg(max(cw, ch) * TOUCH_ROOM, 'cj-touch-top')
 
     out = os.path.join(ROOT, 'public', 'brand')
     os.makedirs(out, exist_ok=True)
@@ -153,7 +168,8 @@ def main(font_path):
     js = ("'use strict';\n/* Generated by scripts/make-brand.py — do not edit. */\n"
           f"module.exports = {{\n  WORDMARK: {json.dumps(wordmark)},\n"
           f"  WORDMARK_RATIO: {width / height:.4f},\n"
-          f"  ICON: {json.dumps(icon)}\n}};\n")
+          f"  ICON: {json.dumps(icon)},\n"
+          f"  TOUCH_ICON: {json.dumps(touch_icon)}\n}};\n")
     with open(os.path.join(ROOT, 'site', 'brand-svg.js'), 'w') as f:
         f.write(js)
 
@@ -162,7 +178,9 @@ def main(font_path):
     for letter, d, left, top, mid, w in split_letters:
         print(f'  {letter}: ink top {fmt(top)}, split at {fmt(mid)} (letter middle)')
     print('glyphs:', ' '.join(n for n, *_ in placed))
-    print('any <text> in output:', '<text' in wordmark or '<text' in icon)
+    print('outline:', OUTLINE, 'units outside; stroked paths in wordmark:', wordmark.count('paint-order'))
+    print(f'tab icon: C spans {ICON_FILL:.0%} of the square with its outline; touch icon side = {TOUCH_ROOM} x C')
+    print('any <text> in output:', any('<text' in x for x in (wordmark, icon, touch_icon)))
 
 
 if __name__ == '__main__':
