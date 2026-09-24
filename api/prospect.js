@@ -15,8 +15,19 @@ const { getProspect } = require('../site/prospects.js');
 const { websiteFinding } = require('../lib/website-finding.js');
 const C = require('../site/content.js');
 const { pageShell, esc } = require('../site/shell.js');
+const { clientKey, counter, distinctCounter, retryAfter } = require('../lib/ratelimit.js');
 
 const INTAKE_URL = 'https://stevencowie73.github.io/shop-check';
+
+/* Read lib/ratelimit.js before trusting these. Per instance, in memory, keyed
+   on the forwarded address, and generous enough that a family passing one
+   phone around never sees a 429.
+
+   Forty a minute is about twenty times what reading a page costs. Twelve
+   different codes in ten minutes is the one that bites: a prospect looks at
+   one, and only a script looks at a thirteenth. */
+const RATE = counter({ windowMs: 60 * 1000, max: 40 });
+const WALK = distinctCounter({ windowMs: 10 * 60 * 1000, max: 12 });
 
 function notFound(res) {
   res.statusCode = 404;
@@ -56,12 +67,19 @@ function render(p, channel) {
   const finding = websiteFinding(p.websiteState, p.websiteAudit);
   const brand = C.BUSINESS.brand;
 
-  /* One action. While there is no phone number in the config it is an email
-     link rather than a dead sms: one. */
+  /* Two actions once there is a number to put in them, because half the
+     people this reaches will not text a stranger and the other half will not
+     ring one. While the number is still empty a tel: link would dial nothing
+     and an sms: link would open an empty thread, so there is one email link
+     instead. */
   const smsBody = `Hi Steven, this is ${p.business}. Saw the page.`;
-  const action = C.BUSINESS.phone
-    ? `<a class="action" id="action" data-event="text_tapped" href="sms:${esc(String(C.BUSINESS.phone).replace(/[^0-9+]/g, ''))}?&body=${encodeURIComponent(smsBody)}">Text me</a>`
-    : `<a class="action" id="action" data-event="text_tapped" href="mailto:${esc(C.BUSINESS.email)}?subject=${encodeURIComponent(p.business)}&body=${encodeURIComponent(smsBody)}">Email me</a>`;
+  const dialled = String(C.BUSINESS.phone || '').replace(/[^0-9+]/g, '');
+  const action = dialled
+    ? `<div class="actions">
+  <a class="action" data-event="text_tapped" href="sms:${esc(dialled)}?&body=${encodeURIComponent(smsBody)}">Text me</a>
+  <a class="action" data-event="call_tapped" href="tel:${esc(dialled)}">Call me</a>
+</div>`
+    : `<a class="action" data-event="text_tapped" href="mailto:${esc(C.BUSINESS.email)}?subject=${encodeURIComponent(p.business)}&body=${encodeURIComponent(smsBody)}">Email me</a>`;
 
   const listing = p.placeId
     ? `<section>
@@ -168,8 +186,10 @@ ${websiteSection}
   });
   startClock();
 
-  var a = document.getElementById('action');
-  if (a) a.addEventListener('click', function () { track(a.getAttribute('data-event')); });
+  var actions = document.querySelectorAll('.action');
+  Array.prototype.forEach.call(actions, function (el) {
+    el.addEventListener('click', function () { track(el.getAttribute('data-event')); });
+  });
   var intake = document.getElementById('intake');
   if (intake) intake.addEventListener('click', function () { track('intake_opened'); });
 
@@ -291,6 +311,8 @@ section { margin: 0 0 6px; }
 .hours { margin: 10px 0 0; font-size: 15px; line-height: 1.6; }
 
 /* ---- the action ---- */
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 10px; }
+.actions .action { flex: 1 1 150px; margin: 0; }
 .action {
   display: flex; align-items: center; justify-content: center;
   min-height: 60px; margin: 26px 0 10px; padding: 12px 20px;
@@ -310,6 +332,16 @@ module.exports = async function handler(req, res) {
   const channelRaw = String(url.searchParams.get('c') || '').toLowerCase();
   const channel = channelRaw === 'letter' || channelRaw === 'email' ? channelRaw : 'direct';
 
+  const who = clientKey(req);
+  const asked = String(ref || '').trim().toUpperCase();
+  if (RATE.exceeded(who) || WALK.exceeded(who, asked)) {
+    res.statusCode = 429;
+    res.setHeader('Retry-After', retryAfter(RATE.windowMs));
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('Too many requests.\n');
+    return;
+  }
+
   let prospect = null;
   try {
     prospect = await getProspect(ref);
@@ -324,4 +356,9 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.render = render;
+module.exports.RATE = RATE;
+module.exports.WALK = WALK;
+/* Tests and local runs share one process, so the counters need emptying
+   between cases that are deliberately over the limit. */
+module.exports.resetLimits = function () { RATE.reset(); WALK.reset(); };
 module.exports.PROSPECT_CSS = PROSPECT_CSS;

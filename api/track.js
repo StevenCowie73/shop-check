@@ -10,6 +10,17 @@
    anything that identifies a person. A reference code says which letter was
    opened, not who was holding the phone. */
 
+const { clientKey, counter, distinctCounter, retryAfter } = require('../lib/ratelimit.js');
+
+/* Read lib/ratelimit.js before trusting these: in memory, per instance, and
+   emptied by a cold start. One page visit sends at most six events, so 120 a
+   minute is twenty page visits from one address — a builders' merchant on one
+   office connection stays well under it. Twelve different codes in ten
+   minutes matches the page's own limit, so a script cannot map which codes
+   are live by tracking against them instead. */
+const RATE = counter({ windowMs: 60 * 1000, max: 120 });
+const WALK = distinctCounter({ windowMs: 10 * 60 * 1000, max: 12 });
+
 const EVENTS = new Set([
   'page_open',        /* only after the page has been visible two seconds */
   'listing_shown',
@@ -57,6 +68,14 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  const who = clientKey(req);
+  if (RATE.exceeded(who)) {
+    res.statusCode = 429;
+    res.setHeader('Retry-After', retryAfter(RATE.windowMs));
+    res.end();
+    return;
+  }
+
   let body = {};
   try {
     body = await readJson(req);
@@ -83,6 +102,13 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  if (WALK.exceeded(who, ref)) {
+    res.statusCode = 429;
+    res.setHeader('Retry-After', retryAfter(WALK.windowMs));
+    res.end();
+    return;
+  }
+
   /* One line, no address, no agent string, no cookie. */
   console.log(JSON.stringify({
     at: new Date().toISOString(), ref, event, channel, device
@@ -93,4 +119,7 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.EVENTS = EVENTS;
+module.exports.RATE = RATE;
+module.exports.WALK = WALK;
+module.exports.resetLimits = function () { RATE.reset(); WALK.reset(); };
 module.exports.NOT_A_PERSON = NOT_A_PERSON;

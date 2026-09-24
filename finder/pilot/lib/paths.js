@@ -40,6 +40,9 @@ module.exports = {
   astraAuditCsv: round => at('astra', 'audit-round' + round, 'prospects.csv'),
   astraAuditJson: round => at('astra', 'audit-round' + round, 'site-audit.json'),
 
+  /* the reference codes printed on the letters — append-only, never reissued */
+  refs: at('refs.json'),
+
   /* 10  the letters */
   fontsDir: at('letters', 'fonts'),
   fontCss: at('letters', 'plex.css'),

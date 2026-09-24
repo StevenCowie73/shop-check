@@ -15,6 +15,24 @@
     "hooks:install": "node scripts/install-hooks.js",
     "check:names": "node scripts/check-private-names.js --all",
     "test": "node --test tests/*.test.js",
-    "site:build": "node site/build.js"
+    "site:build": "node site/build.js",
+    "pilot:walk": "node finder/pilot/1-walk-lslbc.js",
+    "pilot:parse": "node finder/pilot/2-parse-records.js",
+    "pilot:candidates": "node finder/pilot/3-website-candidates.js",
+    "pilot:audit": "SHOP_CHECK_OUT_DIR=finder/pilot/out/audit node finder/check-sites.js",
+    "pilot:spine": "node finder/pilot/4-build-spine.js",
+    "pilot:shortlist": "node finder/pilot/5-shortlist.js",
+    "pilot:email": "node finder/pilot/6-check-email.js",
+    "pilot:rules": "node finder/pilot/7-apply-rules.js",
+    "pilot:astra": "node finder/pilot/8-astra-websites.mjs",
+    "pilot:merge": "node finder/pilot/9-merge-astra.js",
+    "pilot:letters": "node finder/pilot/10-render-letters.js",
+    "pilot:verify": "node finder/pilot/verify-letters.js",
+    "pilot:rebuild": "npm run pilot:spine && npm run pilot:shortlist && npm run pilot:email && npm run pilot:rules && npm run pilot:merge && npm run pilot:letters && npm run pilot:verify"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
+    "qrcode": "^1.5.4"
   }
 }

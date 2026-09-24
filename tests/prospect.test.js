@@ -351,3 +351,141 @@ test('the page only counts an open after two seconds of being visible', async ()
   assert.match(res.body, /visibleFor >= 2000/);
   assert.match(res.body, /sendBeacon|keepalive/);
 });
+
+/* ---------- the actions ---------- */
+
+test('a configured phone number gives a text button and a call button', async () => {
+  const C = require('../site/content.js');
+  const before = C.BUSINESS.phone;
+  C.BUSINESS.phone = '(318) 555-0100';
+  try {
+    const p = await getProspect(DEMO_REF);
+    const html = prospectRoute.render(p, 'letter');
+    assert.match(html, /href="sms:3185550100\?&body=/, 'the text link dials the digits only');
+    assert.match(html, /href="tel:3185550100"/, 'the call link is a tel: link');
+    assert.match(html, /data-event="call_tapped"/, 'tapping call is an event');
+    assert.match(html, /data-event="text_tapped"/);
+    assert.ok(html.includes('>Call me<') && html.includes('>Text me<'));
+    assert.strictEqual(html.includes('>Email me<'), false, 'the email fallback is gone');
+    /* side by side, and each still a full-size tap target */
+    assert.match(html, /class="actions"/);
+    assert.match(prospectRoute.PROSPECT_CSS, /\.actions\s*\{[^}]*display:\s*flex/);
+    assert.match(prospectRoute.PROSPECT_CSS, /min-height:\s*60px/);
+    /* the tracker has to find both, so it can no longer be looking for an id */
+    assert.match(html, /querySelectorAll\('\.action'\)/);
+    assert.strictEqual(/getElementById\('action'\)/.test(html), false);
+  } finally {
+    C.BUSINESS.phone = before;
+  }
+});
+
+test('with no phone number there is one email button and no dead links', async () => {
+  const C = require('../site/content.js');
+  assert.strictEqual(C.BUSINESS.phone, '', 'the shipped config still has no number');
+  const p = await getProspect(DEMO_REF);
+  const html = prospectRoute.render(p, 'letter');
+  assert.ok(html.includes('>Email me<'));
+  assert.strictEqual(html.includes('>Call me<'), false);
+  assert.strictEqual(/href="tel:/.test(html), false, 'no tel: link with nothing to dial');
+  assert.strictEqual(/href="sms:/.test(html), false, 'no sms: link with nothing to text');
+});
+
+test('call_tapped is an event the tracker accepts', () => {
+  assert.ok(trackRoute.EVENTS.has('call_tapped'));
+});
+
+/* ---------- the speed bump ---------- */
+
+test('walking through codes on the page is refused', async () => {
+  prospectRoute.resetLimits();
+  try {
+    const ip = { 'x-forwarded-for': '198.51.100.20' };
+    let refused = 0, tried = 0;
+    /* unknown codes are 404s until the walk limit bites, and then 429s */
+    for (let i = 0; i < 30; i++) {
+      const res = fakeRes();
+      const ref = 'WALK' + String(i).padStart(4, '0');
+      await prospectRoute(fakeReq('/api/prospect?ref=' + ref, { headers: ip }), res);
+      tried++;
+      if (res.statusCode === 429) {
+        refused++;
+        assert.ok(Number(res.headers['retry-after']) > 0, 'no Retry-After on the 429');
+      }
+    }
+    assert.ok(refused > 0, 'walked ' + tried + ' codes without being refused once');
+    assert.ok(refused >= 15, 'only ' + refused + ' of ' + tried + ' were refused');
+  } finally {
+    prospectRoute.resetLimits();
+  }
+});
+
+test('reading your own page over and over is never refused', async () => {
+  prospectRoute.resetLimits();
+  try {
+    const ip = { 'x-forwarded-for': '198.51.100.21' };
+    for (let i = 0; i < 20; i++) {
+      const res = fakeRes();
+      await prospectRoute(fakeReq('/api/prospect?ref=' + DEMO_REF + '&c=letter', { headers: ip }), res);
+      assert.strictEqual(res.statusCode, 200, 'refused a refresh at ' + i);
+    }
+  } finally {
+    prospectRoute.resetLimits();
+  }
+});
+
+test('one address being refused does not refuse another', async () => {
+  prospectRoute.resetLimits();
+  try {
+    const noisy = { 'x-forwarded-for': '198.51.100.22' };
+    for (let i = 0; i < 30; i++) {
+      await prospectRoute(fakeReq('/api/prospect?ref=NOISE' + i, { headers: noisy }), fakeRes());
+    }
+    const res = fakeRes();
+    await prospectRoute(fakeReq('/api/prospect?ref=' + DEMO_REF,
+      { headers: { 'x-forwarded-for': '198.51.100.23' } }), res);
+    assert.strictEqual(res.statusCode, 200);
+  } finally {
+    prospectRoute.resetLimits();
+  }
+});
+
+test('the tracking stub refuses a flood and refuses a walk', async () => {
+  trackRoute.resetLimits();
+  try {
+    const ip = { 'x-forwarded-for': '198.51.100.30' };
+    const send = async (ref) => {
+      const res = fakeRes();
+      await trackRoute(fakeReq('/api/track', {
+        method: 'POST',
+        headers: Object.assign({ 'user-agent': PHONE_UA, 'content-type': 'application/json' }, ip),
+        body: JSON.stringify({ ref, event: 'page_open', channel: 'letter', device: 'phone' })
+      }), res);
+      return res;
+    };
+    let walkRefused = 0;
+    for (let i = 0; i < 25; i++) {
+      const res = await send('TRACK' + String(i).padStart(3, '0'));
+      if (res.statusCode === 429) walkRefused++;
+    }
+    assert.ok(walkRefused >= 10, 'only ' + walkRefused + ' of 25 codes were refused');
+    /* and the per-minute counter catches sheer volume on one code */
+    trackRoute.resetLimits();
+    let floodRefused = 0;
+    for (let i = 0; i < 140; i++) {
+      const res = await send('DEMO2026');
+      if (res.statusCode === 429) floodRefused++;
+    }
+    assert.ok(floodRefused > 0, 'a flood of 140 events was never refused');
+  } finally {
+    trackRoute.resetLimits();
+  }
+});
+
+test('the limits are in memory only and keep no address', () => {
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'ratelimit.js'), 'utf8');
+  assert.strictEqual(/require\('fs'\)|writeFile|console\.log/.test(src), false,
+    'the rate limiter writes something down');
+  /* it says what it cannot do, because these numbers are easy to over-trust */
+  assert.ok(src.includes('per instance'), 'the honest caveat is missing');
+});

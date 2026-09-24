@@ -8,8 +8,8 @@ Shop Check is a guided intake for small trade businesses: the owner answers a
 few questions and gets one clear recommendation. The whole public site is
 `index.html` — a single self-contained page, no build step.
 
-`finder/` is a separate set of Node scripts (Node 18+, one dependency) for
-building a prospect call list from the Google Places API (New):
+`finder/` is a separate set of Node scripts (Node 18+) for building a prospect
+call list from the Google Places API (New):
 
 - `find-prospects.js` — searches near a point, scores each business on how
   much it is missing what Shop Check recommends, writes `out/prospects.csv`
@@ -21,6 +21,11 @@ building a prospect call list from the Google Places API (New):
   `out/site-audit.json`.
 
 See `finder/README.md` for how to run them and what the settings mean.
+
+`finder/pilot/` is a second, separate pipeline that builds the letter
+shortlist from the state contractor licence register instead. It issues each
+company a reference code, prints it as a QR on the letter, and checks the
+finished PDF by scanning every code back out of it. See `finder/pilot/README.md`.
 
 **`finder/out/` holds real prospect phone numbers.** It is git-ignored and it
 must stay that way.

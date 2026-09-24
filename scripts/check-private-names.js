@@ -33,7 +33,8 @@ const SOURCES = [
   'finder/out/overrides.json',
   'finder/pilot/out/records.json',
   'finder/pilot/out/spine.json',
-  'finder/pilot/out/exclusions.json'
+  'finder/pilot/out/exclusions.json',
+  'finder/pilot/out/refs.json'
 ];
 
 /* Names are compared with punctuation and case thrown away, so that
@@ -115,7 +116,8 @@ function harvestFile(rel, file) {
       remember(o && o.name);
       if (o && o.owner) remember(o.owner.name);
     }
-  } else if (rel.endsWith('exclusions.json')) {
+  } else if (rel.endsWith('exclusions.json') || rel.endsWith('refs.json')) {
+    /* both are keyed by company name */
     for (const company of Object.keys(data)) remember(company);
   } else {
     /* the pilot's records.json (an array) and spine.json (an object) */

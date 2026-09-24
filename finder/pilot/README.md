@@ -31,9 +31,39 @@ Run in order. Steps 4 onwards are cheap and can be re-run freely.
 | 9 | `npm run pilot:astra` | Asks Astra for the websites we could not derive | api.openai.com |
 | 10 | `npm run pilot:merge` | Folds Astra in and re-ranks | — |
 | 11 | `npm run pilot:letters` | Renders the top twenty to `out/pilot-letters.pdf` | Google Fonts, once |
+| 12 | `npm run pilot:verify` | Opens that PDF and scans every QR code in it | — |
 
-`npm run pilot:rebuild` runs steps 5, 6, 7, 8, 10 and 11 — everything that
+`npm run pilot:rebuild` runs steps 5, 6, 7, 8, 10, 11 and 12 — everything that
 costs nothing and touches nobody. Use it after changing a rule.
+
+## Reference codes
+
+Each company gets an eight-character code, and the QR on its letter points at
+`https://coldenjames.com/p/CODE?c=letter`. The alphabet leaves out every
+character that gets misread off paper — no `0` or `O`, no `1`, `I` or `L` —
+and the codes are drawn with `crypto.randomInt`, so one letter's code tells
+you nothing about the next.
+
+Codes live in `out/refs.json`, company name to code. That file is
+**append-only**: step 11 issues a code to a company that does not have one and
+never touches a company that does, because once a letter is in the post its
+code is the only thing tying an opened page back to it. It names real
+companies, so like everything in `out/` it is never committed.
+
+`?c=letter` and `?c=email` are the same code reached two ways, so a letter
+and its follow-up email can be told apart without giving one company two
+codes.
+
+## Before anything is printed
+
+Step 11 decodes every QR it generates and refuses to write a PDF if one does
+not read back. Step 12 is the check that matters more: it opens the finished
+PDF, pulls every image out of it, decodes them, and fails unless there are
+exactly as many codes as letters, each scanning to its own company's URL, in
+rank order. Run it before sending anything to a printer.
+
+It prints reference codes and no company names, so its output is safe to
+paste anywhere.
 
 ## What it costs
 

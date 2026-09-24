@@ -2,8 +2,14 @@
 
 /* Step 10. Renders the top twenty as one PDF, one US Letter page per letter.
 
-   Review-only: the QR is a grey placeholder, and OUTREACH_DOMAIN/p/REF,
-   [PHONE], [BUSINESS NAME] and [MAILING ADDRESS] are literal placeholders.
+   Each company gets a reference code from lib/refs.js — issued once, kept in
+   out/refs.json and never reissued — and the QR on its letter is a real code
+   pointing at coldenjames.com/p/REF?c=letter. Every code is decoded from the
+   image before it is embedded, so a letter cannot go out carrying a QR that
+   does not scan.
+
+   [PHONE] and [MAILING ADDRESS] are still literal placeholders, waiting on
+   the number and the filing.
 
    The fill rules are the point of this file. What a letter may say about
    somebody's website depends entirely on what we actually established:
@@ -16,6 +22,13 @@ const { execFileSync } = require('child_process');
 
 const P = require('./lib/paths.js');
 const { businessName, firstName, tradeNoun } = require('./lib/names.js');
+const { assign } = require('./lib/refs.js');
+const { qrDataUri } = require('../../lib/qr.js');
+const { prospectUrl } = require('../../lib/refs.js');
+
+/* The letterhead. The number and the address are the two things still
+   missing; the name is not. */
+const BRAND = 'ColdenJames';
 
 const FONT_CSS_URL =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap';
@@ -69,7 +82,7 @@ function findChrome() {
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function letterHtml(row, rec) {
+function letterHtml(row, rec, code) {
   const biz = businessName(row.company);
   const first = firstName(rec.qualifyingParties[0]);
   const greeting = first ? `${first} —` : `To the owner of ${biz} —`;
@@ -82,7 +95,7 @@ function letterHtml(row, rec) {
 
   const html = `<section class="page">
   <header class="head">
-    <p class="bizname">[BUSINESS NAME]</p>
+    <p class="bizname">${esc(BRAND)}</p>
     <p class="bizaddr">[MAILING ADDRESS]</p>
   </header>
   <div class="rule"></div>
@@ -94,8 +107,8 @@ function letterHtml(row, rec) {
   ${website.text ? `<p>${esc(website.text)}</p>` : ''}
   <p>${esc(pageLine)}</p>
   <div class="qrblock">
-    <div class="qr">QR</div>
-    <p class="url">OUTREACH_DOMAIN/p/REF</p>
+    <img class="qr" src="${code.image}" alt="">
+    <p class="url">${esc(code.printed)}</p>
   </div>
   <p>$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
   <p>If it's not for you, no hard feelings. If it is, text me.</p>
@@ -107,6 +120,7 @@ function letterHtml(row, rec) {
     html,
     row: {
       rank: row.rank, company: row.company, biz, greeting,
+      ref: code.ref, url: code.url,
       trade: trade.noun, tradeFrom: trade.from,
       paragraph: website.which,
       emailUsable: row.emailUsable === true,
@@ -143,12 +157,11 @@ p { margin: 0 0 10.5pt; }
 .date { font-size: 10.5pt; margin-bottom: 16pt; }
 .greeting { font-weight: 600; font-size: 12pt; margin-bottom: 13pt; }
 .qrblock { flex: none; margin: 3pt 0 12pt; }
-.qr {
-  flex: none; width: 1in; height: 1in; border: 1pt solid #1C1917;
-  background: #E7E5E4; color: #57534E;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9pt; font-weight: 600; letter-spacing: 0.08em;
-}
+/* A real code, drawn at 720px and printed into one inch, so the printer
+   rather than the image decides how fine the modules are. No border: the
+   quiet zone is inside the image and a rule drawn against it is exactly what
+   a scanner does not want. */
+.qr { flex: none; display: block; width: 1in; height: 1in; }
 .url { font-size: 10.5pt; margin: 7pt 0 0; }
 .sig { margin-top: 14pt; margin-bottom: 0; }
 /* Two deliberate lines, broken where the sentence breaks, so no word is
@@ -160,7 +173,7 @@ p { margin: 0 0 10.5pt; }
 }`;
 }
 
-function main() {
+async function main() {
   const full = JSON.parse(fs.readFileSync(P.spine, 'utf8'));
   const byCompany = new Map(full.records.map(r => [r.company, r]));
   const rows = full.pilotShortlist.rows
@@ -170,7 +183,27 @@ function main() {
   if (!rows.length) throw new Error('no letters to render — run steps 5 to 9 first');
 
   ensureFonts();
-  const built = rows.map(row => letterHtml(row, byCompany.get(row.company)));
+
+  /* Codes first, and all of them, so that a company whose QR will not encode
+     stops the run before any PDF is written. */
+  const { refs, issued } = assign(rows.map(r => r.company));
+  console.log(issued
+    ? 'issued ' + issued + ' new reference code' + (issued === 1 ? '' : 's') + ' into ' + P.refs
+    : 'every company already had its reference code');
+
+  const codes = new Map();
+  for (const row of rows) {
+    const ref = refs[row.company];
+    const url = prospectUrl(ref, 'letter');
+    codes.set(row.company, {
+      ref, url,
+      printed: url.replace(/^https:\/\//, '').replace(/\?.*$/, ''),
+      image: await qrDataUri(url)      /* decoded before it comes back */
+    });
+  }
+  console.log('all ' + codes.size + ' QR codes encoded and read back');
+
+  const built = rows.map(row => letterHtml(row, byCompany.get(row.company), codes.get(row.company)));
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Pilot letters — review</title>
 <style>
@@ -197,10 +230,11 @@ ${built.map(b => b.html).join('\n')}
 
   for (const b of built) {
     const r = b.row;
-    console.log(String(r.rank).padStart(2), r.biz.slice(0, 32).padEnd(34),
+    console.log(String(r.rank).padStart(2), r.ref.padEnd(10),
+      r.biz.slice(0, 30).padEnd(32),
       r.greeting.padEnd(22), (r.trade + ' (' + r.tradeFrom + ')').padEnd(26),
       r.paragraph.padEnd(32), r.emailUsable ? 'emailUsable' : '');
   }
 }
 
-main();
+main().catch(err => { console.error(err.message); process.exit(1); });
