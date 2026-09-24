@@ -180,7 +180,7 @@ function setup() {
   const panels = CARRIERS.map(carrierBlock).join('\n\n');
 
   const stevenLine = C.BUSINESS.phone
-    ? `<p><a href="tel:${esc(String(C.BUSINESS.phone).replace(/[^0-9+]/g, ''))}">Text Steven on ${esc(C.BUSINESS.phone)}</a></p>`
+    ? `<p><a href="sms:${esc(String(C.BUSINESS.phone).replace(/[^0-9+]/g, ''))}">Text Steven on ${esc(C.BUSINESS.phone)}</a></p>`
     : '';
 
   const body = `<header>

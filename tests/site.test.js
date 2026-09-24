@@ -203,7 +203,7 @@ test('the privacy policy carries the sentence the carriers require, verbatim', (
   assert.ok(html.includes('Reply STOP'), 'STOP instruction');
   assert.ok(html.includes('HELP'), 'HELP instruction');
   assert.ok(html.includes('Message and data rates may apply'));
-  assert.ok(html.includes('Message frequency varies'));
+  assert.ok(html.includes('One text per missed call, at most one per caller in any 24 hours.'));
   assert.match(html, /href="https:\/\/policies\.google\.com\/privacy"/);
   assert.ok(html.includes('Plain-English draft'));
   assert.ok(html.includes('Last updated'));

@@ -155,7 +155,8 @@ const PRIVACY = {
         'called a business number we run. We do not buy lists, we do not send ' +
         'marketing texts, and we do not text anyone who has not just tried to ' +
         'reach that business.',
-        'Message frequency varies. Message and data rates may apply. Reply ' +
+        'One text per missed call, at most one per caller in any 24 hours. ' +
+        'Message and data rates may apply. Reply ' +
         'STOP to any message to opt out, or HELP for help.',
         CARRIER_SENTENCE
       ]
