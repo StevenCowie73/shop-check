@@ -25,6 +25,9 @@ const { businessName, firstName, tradeNoun } = require('./lib/names.js');
 const { assign } = require('./lib/refs.js');
 const { qrDataUri } = require('../../lib/qr.js');
 const { prospectUrl } = require('../../lib/refs.js');
+/* The texting disclosure under the number is the same line the /sms page
+   quotes as "what the letter says", so both read it from one place. */
+const { LETTER_SMS_LINE } = require('../../lib/texting-copy.js');
 
 /* The letterhead. The number and the address are the two things still
    missing; the name is not. */
@@ -113,6 +116,7 @@ function letterHtml(row, rec, code) {
   <p>$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
   <p>If it's not for you, no hard feelings. If it is, text me.</p>
   <p class="sig">Steven Cowie<br>[PHONE]</p>
+  <p class="smsnote">${esc(LETTER_SMS_LINE)}</p>
   <p class="foot">Sent to the mailing address on your state contractor license.<br>Text STOP to the number above and you won't hear from me again.</p>
 </section>`;
 
@@ -164,6 +168,8 @@ p { margin: 0 0 10.5pt; }
 .qr { flex: none; display: block; width: 1in; height: 1in; }
 .url { font-size: 10.5pt; margin: 7pt 0 0; }
 .sig { margin-top: 14pt; margin-bottom: 0; }
+/* Directly under the number, small: what a caller agrees to by calling. */
+.smsnote { font-size: 8.5pt; line-height: 1.45; color: #57534E; margin: 3pt 0 0; }
 /* Two deliberate lines, broken where the sentence breaks, so no word is
    left stranded on a line of its own. */
 .foot {

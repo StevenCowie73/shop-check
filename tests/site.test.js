@@ -26,7 +26,8 @@ const rewriteTarget = res => res.headers.get('x-middleware-rewrite');
 /* ---------- the host gate ---------- */
 
 test('the site is served on coldenjames.com', async () => {
-  for (const [p, file] of [['/', 'index.html'], ['/privacy', 'privacy.html'], ['/terms', 'terms.html']]) {
+  for (const [p, file] of [['/', 'index.html'], ['/privacy', 'privacy.html'], ['/terms', 'terms.html'],
+                           ['/sms', 'sms.html'], ['/sms/', 'sms.html']]) {
     const res = middleware(req('coldenjames.com', p));
     const target = rewriteTarget(res);
     assert.ok(target, p + ' should rewrite');
@@ -77,8 +78,8 @@ test('the 404 page says the right thing and offers a way back', async () => {
 
 /* ---------- indexing ---------- */
 
-test('only the three real pages on coldenjames.com are indexable', async () => {
-  for (const p of ['/', '/privacy', '/terms']) {
+test('only the four real pages on coldenjames.com are indexable', async () => {
+  for (const p of ['/', '/privacy', '/terms', '/sms']) {
     const res = middleware(req('coldenjames.com', p));
     assert.strictEqual(res.headers.get('x-robots-tag'), 'index, follow', p);
   }
@@ -95,7 +96,8 @@ test('the raw /coldenjames/*.html paths are never indexable', async () => {
   /* On the site host they 404. On every other host middleware does not
      touch them, and vercel.json applies noindex because the host is not
      coldenjames.com. */
-  for (const p of ['/coldenjames/index.html', '/coldenjames/privacy.html', '/coldenjames/terms.html']) {
+  for (const p of ['/coldenjames/index.html', '/coldenjames/privacy.html', '/coldenjames/terms.html',
+                   '/coldenjames/sms.html']) {
     const onSite = middleware(req('coldenjames.com', p));
     assert.strictEqual(onSite.status, 404, p + ' on the site host');
     assert.strictEqual(onSite.headers.get('x-robots-tag'), 'noindex, nofollow');
@@ -119,7 +121,7 @@ test('vercel.json withholds noindex from the site host and applies it everywhere
 
 test('no other host is rewritten, redirected or 404ed', async () => {
   for (const host of ['signal.cowie.ai', 'signal-abc123.vercel.app', 'localhost', 'coldenjames.com.evil.test']) {
-    for (const p of ['/', '/privacy', '/terms', '/index.html', '/p/ABC']) {
+    for (const p of ['/', '/privacy', '/terms', '/sms', '/index.html', '/p/ABC']) {
       const res = middleware(req(host, p));
       assert.strictEqual(rewriteTarget(res), null, host + p + ' must not be rewritten');
       assert.notStrictEqual(res.status, 404, host + p + ' must not be 404ed by us');
@@ -138,7 +140,7 @@ test('the matcher never lets middleware see an api route', () => {
   for (const p of ['/api/lookup', '/api/twilio/voice', '/api/twilio/dial-status', '/api/twilio/sms']) {
     assert.strictEqual(re.test(p), false, p + ' must be excluded from middleware');
   }
-  for (const p of ['/', '/privacy', '/terms']) {
+  for (const p of ['/', '/privacy', '/terms', '/sms']) {
     assert.strictEqual(re.test(p), true, p + ' must be included');
   }
 });
@@ -350,7 +352,7 @@ test('robots.txt points at the sitemap and hides /p/ and /setup', async () => {
   assert.match(txt, /^Sitemap: https:\/\/coldenjames\.com\/sitemap\.xml$/m);
 });
 
-test('the sitemap lists exactly the three public pages', async () => {
+test('the sitemap lists exactly the four public pages', async () => {
   const res = middleware(req('coldenjames.com', '/sitemap.xml'));
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /xml/);
@@ -358,6 +360,7 @@ test('the sitemap lists exactly the three public pages', async () => {
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
   assert.deepStrictEqual(locs, [
     'https://coldenjames.com/',
+    'https://coldenjames.com/sms',
     'https://coldenjames.com/privacy',
     'https://coldenjames.com/terms'
   ]);
@@ -383,4 +386,74 @@ test('the palette and font are the project ones', () => {
   assert.match(html, /IBM\+Plex\+Sans/);
   assert.strictEqual(/box-shadow|linear-gradient/.test(html), false, 'no shadows or gradients');
   assert.match(html, /name="viewport" content="width=device-width/);
+});
+
+/* ---------- the texting page ---------- */
+
+test('/sms shows the whole call flow with the real wording', () => {
+  const html = fs.readFileSync(path.join(OUT, 'sms.html'), 'utf8');
+  const text = html.replace(/<[^>]+>/g, '').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"').replace(/&middot;/g, '·').replace(/&larr;/g, '←');
+  const COPY = require('../lib/texting-copy.js');
+  assert.match(html, /<title>Text messages from ColdenJames<\/title>/);
+  assert.match(html, /<h1>Text messages from ColdenJames<\/h1>/);
+  assert.match(html, /<ol class="flow">/, 'numbered steps');
+  for (const [what, line] of [
+    ['homepage line', C.HOME.smsLine],
+    ['letter line', COPY.LETTER_SMS_LINE],
+    ['recorded disclosure', COPY.VOICE_DISCLOSURE],
+    ['missed-call text', COPY.MISSED_CALL_TEXT],
+    ['STOP reply', C.STOP_REPLY],
+    ['HELP reply', C.HELP_REPLY]
+  ]) assert.ok(text.includes(line), what + ' quoted word for word');
+  assert.ok(text.includes('Staying on the line after this message is how you agree'), 'how consent is given');
+  assert.ok(text.includes('Replies are passed to Steven, who may answer you by text.'));
+  assert.ok(text.includes('One automated text per missed call, at most one per caller in any 24 hours, ' +
+    'plus replies in conversations you start. Message and data rates may apply.'));
+  assert.match(html, /Reply <strong>STOP<\/strong>/);
+  assert.match(html, /Reply <strong>HELP<\/strong>/);
+  assert.ok(text.includes('Numbers are never taken from lists'));
+  assert.ok(text.includes('no marketing texts'));
+  assert.match(html, /href="\/terms"/);
+  assert.match(html, /href="\/privacy"/);
+  assert.strictEqual(/noindex/i.test(html), false, 'nothing in the page hides it');
+});
+
+test('the quoted wording on /sms is exactly what the Twilio routes use', () => {
+  const COPY = require('../lib/texting-copy.js');
+  const dial = fs.readFileSync(path.join(ROOT, 'api', 'twilio', 'dial-status.js'), 'utf8');
+  const voice = fs.readFileSync(path.join(ROOT, 'api', 'twilio', 'voice.js'), 'utf8');
+  assert.match(dial, /MISSED_CALL_TEXT/);
+  assert.match(voice, /VOICE_DISCLOSURE/);
+  assert.strictEqual(COPY.LETTER_SMS_LINE,
+    "If I miss your call, you'll get one text back. Msg & data rates may apply. Reply STOP to opt out, HELP for help.");
+});
+
+test('every page links to /sms from the footer', () => {
+  for (const f of ['index.html', 'privacy.html', 'terms.html', 'sms.html', '404.html']) {
+    const html = fs.readFileSync(path.join(OUT, f), 'utf8');
+    const foot = html.slice(html.lastIndexOf('<footer>'));
+    assert.match(foot, /<a href="\/sms">Text messages<\/a>/, f);
+  }
+});
+
+test('the terms quote the recorded line callers hear', () => {
+  const html = fs.readFileSync(path.join(OUT, 'terms.html'), 'utf8').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  const { VOICE_DISCLOSURE } = require('../lib/texting-copy.js');
+  assert.ok(html.includes('<strong>What callers hear:</strong>'));
+  assert.ok(html.includes('"' + VOICE_DISCLOSURE + '"'));
+});
+
+test('the privacy page still says mobile information is not shared', () => {
+  const html = fs.readFileSync(path.join(OUT, 'privacy.html'), 'utf8');
+  assert.ok(html.includes('No mobile information will be shared with third parties or affiliates for ' +
+    'marketing or promotional purposes. Text messaging originator opt-in data and consent will not be ' +
+    'shared with any third parties.'));
+});
+
+test('the letter template prints the texting line directly under the number', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'finder', 'pilot', '10-render-letters.js'), 'utf8');
+  assert.match(src, /require\('\.\.\/\.\.\/lib\/texting-copy\.js'\)/);
+  assert.match(src, /<p class="sig">Steven Cowie<br>\[PHONE\]<\/p>\n\s*<p class="smsnote">\$\{esc\(LETTER_SMS_LINE\)\}<\/p>/);
+  assert.match(src, /\.smsnote \{ font-size: 8\.5pt;/, 'small');
 });

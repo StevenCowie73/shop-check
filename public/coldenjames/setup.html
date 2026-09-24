@@ -105,6 +105,20 @@ footer nav a { margin-right: 18px; }
   font-size: 15px; font-weight: 600;
 }
 .back { display: inline-block; margin: 0 0 8px; font-size: 15px; }
+
+/* ---- the texting page ---- */
+/* Numbered steps, each quoting the exact words used at that step. */
+.flow { margin: 0; padding: 0 0 0 26px; }
+.flow > li { margin: 0 0 22px; padding-left: 4px; }
+.flow > li::marker { font-weight: 700; color: var(--accent); font-size: 19px; }
+.flow h3 { margin: 0 0 6px; }
+.quote-label { margin: 10px 0 4px; font-size: 15px; color: var(--muted); }
+.quote {
+  margin: 8px 0 12px; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent); border-radius: var(--radius);
+  font-size: 17px; line-height: 1.5; text-wrap: pretty;
+}
 .updated { font-size: 15px; color: var(--muted); }
 
 /* ---- the setup page ---- */
@@ -330,7 +344,7 @@ footer nav a { margin-right: 18px; }
 
 <footer>
   <p>ColdenJames is a trade name of COWIE.AI LLC, Bossier City, Louisiana.</p>
-  <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+  <nav><a href="/sms">Text messages</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
 </footer>
 
 <script>

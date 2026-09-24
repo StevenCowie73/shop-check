@@ -22,7 +22,7 @@ const OUT = path.join(__dirname, '..', 'public', 'coldenjames');
 function footer() {
   return `<footer>
   <p>${esc(C.BUSINESS.brand)} is a trade name of ${esc(C.BUSINESS.legal)}, ${esc(C.BUSINESS.city)}, ${esc(C.BUSINESS.state)}.</p>
-  <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+  <nav><a href="/sms">Text messages</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
 </footer>`;
 }
 
@@ -117,6 +117,44 @@ ${footer()}`;
   return pageShell({
     title: doc.title + ' — ' + C.BUSINESS.brand,
     description: doc.title + ' for ' + C.BUSINESS.brand + ', a trade name of ' + C.BUSINESS.legal + '.',
+    body
+  });
+}
+
+function smsPage() {
+  const P = C.SMS_PAGE;
+  const steps = P.steps.map(st => {
+    const quotes = (st.quotes || []).map(q =>
+      (q.label ? `<p class="quote-label">${esc(q.label)}</p>\n    ` : '') +
+      `<blockquote class="quote">${esc(q.text)}</blockquote>`).join('\n    ');
+    return `<li>
+    <h3>${esc(st.heading)}</h3>
+    <p>${inline(st.body)}</p>${quotes ? '\n    ' + quotes : ''}${st.after ? `\n    <p>${inline(st.after)}</p>` : ''}
+  </li>`;
+  }).join('\n  ');
+
+  const links = P.links.map(l => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' &middot; ');
+
+  const body = `<header>
+  <a class="back" href="/">&larr; ${esc(C.BUSINESS.brand)}</a>
+  <h1>${esc(P.title)}</h1>
+  <p class="tagline">${esc(P.intro)}</p>
+</header>
+<div class="rule"></div>
+
+<ol class="flow">
+  ${steps}
+</ol>
+
+<p>${links}</p>
+<p>${esc(P.support)}</p>
+<p class="updated">Last updated: ${esc(C.UPDATED)}.</p>
+
+${footer()}`;
+
+  return pageShell({
+    title: P.title,
+    description: 'How ColdenJames texts a caller whose call was missed, step by step, with the exact wording.',
     body
   });
 }
@@ -272,7 +310,7 @@ function robotsTxt() {
 
 function sitemapXml() {
   const base = 'https://' + C.BUSINESS.domain;
-  const urls = ['/', '/privacy', '/terms']
+  const urls = ['/', '/sms', '/privacy', '/terms']
     .map(p => '  <url><loc>' + base + p + '</loc></url>')
     .join('\n');
   return '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -302,6 +340,7 @@ function build() {
     'index.html': home(),
     'privacy.html': legal(C.PRIVACY, 'privacy'),
     'terms.html': legal(C.TERMS, 'terms'),
+    'sms.html': smsPage(),
     'setup.html': setup(),
     '404.html': notFound(),
     'robots.txt': robotsTxt(),
@@ -351,4 +390,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, home, legal, notFound, setup, robotsTxt, sitemapXml, pageShell, CSS };
+module.exports = { build, home, legal, notFound, setup, smsPage, robotsTxt, sitemapXml, pageShell, CSS };

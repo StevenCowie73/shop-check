@@ -9,11 +9,10 @@
    Anything other than "completed" means the caller did not get through, so
    they get one text. That is the whole product. */
 
-const { authorize, twiml, sendSms, textedWithin } = require('../../lib/twilio.js');
+const { authorize, twiml, sendSms, textedWithin, textingLive } = require('../../lib/twilio.js');
+const { MISSED_CALL_TEXT } = require('../../lib/texting-copy.js');
 
-const DEFAULT_TEXT =
-  "Hi, this is Steven at ColdenJames. Sorry I missed your call. I'll get back " +
-  "to you today, or just text me here. Reply STOP to opt out.";
+const DEFAULT_TEXT = MISSED_CALL_TEXT;
 
 /* Someone who rings three times in an afternoon should not get three texts.
    One a day is a reminder; three is a nuisance and a carrier complaint. */
@@ -31,12 +30,10 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  /* Until the carriers approve the texting campaign they drop our texts
-     after Twilio has accepted them, so the send "succeeds" and nothing
-     arrives. Telling a caller a text is on its way would then be untrue.
-     Texting stays off unless TEXTING_LIVE is "true" (surrounding spaces
-     ignored; "TRUE", "1" or "yes" do not count). */
-  if (String(process.env.TEXTING_LIVE || '').trim() !== 'true') {
+  /* With texting off the send would "succeed" and nothing would arrive, so
+     telling the caller a text is on its way would be untrue. See
+     textingLive in lib/twilio.js. */
+  if (!textingLive()) {
     twiml(res, "<Say>Sorry I missed you. I'll call you back.</Say><Hangup/>");
     return;
   }

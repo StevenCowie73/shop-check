@@ -26,6 +26,11 @@ const BUSINESS = {
 
 const UPDATED = 'September 2026';
 
+/* The words a caller hears and is sent come from lib/texting-copy.js, which
+   the Twilio routes read too, so this site can only ever quote what the
+   phone actually says. */
+const COPY = require('../lib/texting-copy.js');
+
 const SETUP = {
   title: 'Set up your missed-call text',
   intro: 'This takes about two minutes. You only do it once. ' +
@@ -244,6 +249,10 @@ const TERMS = {
         'Message and data rates may apply.',
         '**Support:** ' + BUSINESS.email + ' or ' + PHONE + '.',
         'Reply **STOP** to stop receiving messages. Reply **HELP** for help.',
+        '**What callers hear:** before a call rings through, a recorded ' +
+        'message says: "' + COPY.VOICE_DISCLOSURE + '" Staying on the line ' +
+        'after it is how a caller agrees to the one text. The whole call ' +
+        'flow is at ' + BUSINESS.domain + '/sms.',
         'Carriers are not liable for delayed or undelivered messages.',
         'Mobile information is not shared with third parties or affiliates ' +
         'for marketing or promotional purposes.'
@@ -311,7 +320,85 @@ const TERMS = {
   ]
 };
 
+/* The public page that shows a caller's whole journey, for anyone — a
+   caller, or a carrier reviewing the texting program — who wants to see
+   exactly what happens and what is said. Every quoted line is the real
+   one, read from the same place the phone reads it.
+
+   The STOP and HELP replies are Twilio's, not ours: they are the defaults
+   on the Messaging Service's registered campaign, read from the Twilio API
+   in September 2026. If they are ever changed in Twilio, change them here. */
+const STOP_REPLY =
+  'You have successfully been unsubscribed. You will not receive any more ' +
+  'messages from this number. Reply START to resubscribe.';
+const HELP_REPLY = 'Reply STOP to unsubscribe. Msg&Data Rates May Apply.';
+
+const SMS_PAGE = {
+  title: 'Text messages from ColdenJames',
+  intro:
+    'ColdenJames texts one kind of person: someone who has just called a ' +
+    'ColdenJames business number and not got through. This page shows ' +
+    'every step of that, with the exact words used at each one.',
+  steps: [
+    {
+      heading: 'You find the number',
+      body: 'The number, ' + PHONE + ', is published in two places, and ' +
+            'each one says beside it what happens if your call is missed.',
+      quotes: [
+        { label: 'On the homepage, ' + BUSINESS.domain + ':', text: HOME.smsLine },
+        { label: 'On letters ColdenJames mails to local trade businesses, ' +
+                 'printed under the number:', text: COPY.LETTER_SMS_LINE }
+      ]
+    },
+    {
+      heading: 'You call, and hear this first',
+      body: 'When the call connects, before it rings through, you hear a ' +
+            'recorded message:',
+      quotes: [{ text: COPY.VOICE_DISCLOSURE }],
+      after: 'Staying on the line after this message is how you agree to ' +
+             'get a text back. If you would rather not, hang up and nothing ' +
+             'is sent.'
+    },
+    {
+      heading: "If the call isn't answered, you get one text",
+      body: 'It goes to the number you called from, and nowhere else:',
+      quotes: [{ text: COPY.MISSED_CALL_TEXT }]
+    },
+    {
+      heading: 'If you reply, Steven gets it',
+      body: 'Replies are passed to Steven, who may answer you by text.'
+    },
+    {
+      heading: 'How often',
+      body: 'One automated text per missed call, at most one per caller in ' +
+            'any 24 hours, plus replies in conversations you start. Message ' +
+            'and data rates may apply.'
+    },
+    {
+      heading: 'Stopping, and getting help',
+      body: 'Reply **STOP** at any time and you will get no more texts. ' +
+            'Reply **HELP** for help. These are the replies you get back:',
+      quotes: [
+        { label: 'To STOP:', text: STOP_REPLY },
+        { label: 'To HELP:', text: HELP_REPLY }
+      ]
+    },
+    {
+      heading: 'What we never do',
+      body: 'Numbers are never taken from lists, bought, or shared for ' +
+            'marketing, and ColdenJames sends no marketing texts. The only ' +
+            'person who gets a text is someone who has just called.'
+    }
+  ],
+  links: [
+    { label: 'Terms of Use', href: '/terms' },
+    { label: 'Privacy Policy', href: '/privacy' }
+  ],
+  support: 'Questions: ' + BUSINESS.email + ' or ' + PHONE + '.'
+};
+
 module.exports = {
-  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND, SETUP,
+  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND, SETUP, SMS_PAGE,
+  STOP_REPLY, HELP_REPLY,
   GOOGLE_PRIVACY, GOOGLE_MAPS_TERMS, CARRIER_SENTENCE
 };

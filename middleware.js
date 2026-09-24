@@ -23,7 +23,7 @@ export const config = {
 const SITE_HOSTS = new Set(['coldenjames.com', 'www.coldenjames.com']);
 const CANONICAL = 'coldenjames.com';
 
-/* The only three pages that exist, and the only three search engines may
+/* The only four pages that exist, and the only four search engines may
    index. Everything else on this host — the /coldenjames/*.html files by
    their real paths, and /p/ which is not built yet — is a 404. */
 const PAGES = {
@@ -31,7 +31,9 @@ const PAGES = {
   '/privacy': '/coldenjames/privacy.html',
   '/privacy/': '/coldenjames/privacy.html',
   '/terms': '/coldenjames/terms.html',
-  '/terms/': '/coldenjames/terms.html'
+  '/terms/': '/coldenjames/terms.html',
+  '/sms': '/coldenjames/sms.html',
+  '/sms/': '/coldenjames/sms.html'
 };
 
 /* The setup page is for one client at a time, reached from a link Steven
@@ -93,7 +95,7 @@ export default function middleware(request) {
   const target = PAGES[url.pathname];
   if (target) {
     /* vercel.json withholds the noindex header from this host, so saying
-       so here is what actually makes these three pages indexable. */
+       so here is what actually makes these four pages indexable. */
     return rewrite(new URL(target, url), { headers: { 'X-Robots-Tag': INDEXABLE } });
   }
 
