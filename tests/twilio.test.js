@@ -178,36 +178,26 @@ test('voice dials the owner for 20 seconds with the caller as caller id', async 
   });
 });
 
-test('with texting off the call rings straight through, no disclosure', async () => {
-  for (const flag of [undefined, 'false', 'TRUE']) {
-    const env = flag === undefined ? CONFIGURED : { ...CONFIGURED, TEXTING_LIVE: flag };
-    await withEnv(env, async () => {
-      const res = fakeRes();
-      await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.includes('<Say>'), false, 'nothing said with TEXTING_LIVE ' + flag);
-      assert.match(res.body, /<Response><Dial timeout="20"/, 'the Dial comes first');
-    });
-  }
-});
-
-test('with texting live the caller hears the disclosure, then it rings through', async () => {
+test('the disclosure plays before the call rings through, whatever TEXTING_LIVE says', async () => {
   const { VOICE_DISCLOSURE } = require('../lib/texting-copy.js');
   assert.strictEqual(VOICE_DISCLOSURE,
     "Thanks for calling ColdenJames. If I miss your call, I'll text you back at this number. " +
     'Message and data rates may apply. Reply STOP to opt out.');
-  await withEnv(LIVE, async () => {
-    const res = fakeRes();
-    await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
-    assert.strictEqual(res.statusCode, 200);
-    const say = /<Say>([^<]*)<\/Say>/.exec(res.body);
-    assert.ok(say, 'a disclosure is spoken');
-    assert.strictEqual(say[1].replace(/&apos;/g, "'"), VOICE_DISCLOSURE);
-    assert.ok(res.body.indexOf('<Say>') < res.body.indexOf('<Dial'), 'before the call rings through');
-    assert.match(res.body, /<Dial timeout="20"/);
-    assert.match(res.body, new RegExp('<Number>\\' + OWNER + '</Number>'));
-    assert.strictEqual((res.body.match(/<Say>/g) || []).length, 1, 'said once');
-  });
+  for (const flag of [undefined, '', 'false', 'TRUE', 'true']) {
+    const env = flag === undefined ? CONFIGURED : { ...CONFIGURED, TEXTING_LIVE: flag };
+    await withEnv(env, async () => {
+      const res = fakeRes();
+      await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
+      const label = 'TEXTING_LIVE ' + JSON.stringify(flag);
+      assert.strictEqual(res.statusCode, 200, label);
+      const say = /<Say>([^<]*)<\/Say>/.exec(res.body);
+      assert.ok(say, 'a disclosure is spoken with ' + label);
+      assert.strictEqual(say[1].replace(/&apos;/g, "'"), VOICE_DISCLOSURE, label);
+      assert.match(res.body, /<Response><Say>[^<]*<\/Say><Dial timeout="20"/, 'Say first, then Dial: ' + label);
+      assert.match(res.body, new RegExp('<Number>\\' + OWNER + '</Number>'), label);
+      assert.strictEqual((res.body.match(/<Say>/g) || []).length, 1, 'said once: ' + label);
+    });
+  }
 });
 
 test('the missed-call text is the shared wording', () => {

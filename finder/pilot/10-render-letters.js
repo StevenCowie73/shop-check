@@ -8,8 +8,8 @@
    image before it is embedded, so a letter cannot go out carrying a QR that
    does not scan.
 
-   [PHONE] and [MAILING ADDRESS] are still literal placeholders, waiting on
-   the number and the filing.
+   [MAILING ADDRESS] is still a literal placeholder, waiting on the filing.
+   The phone number is the one the website shows, from site/content.js.
 
    The fill rules are the point of this file. What a letter may say about
    somebody's website depends entirely on what we actually established:
@@ -29,9 +29,10 @@ const { prospectUrl } = require('../../lib/refs.js');
    quotes as "what the letter says", so both read it from one place. */
 const { LETTER_SMS_LINE } = require('../../lib/texting-copy.js');
 
-/* The letterhead. The number and the address are the two things still
-   missing; the name is not. */
+/* The letterhead. The address is the one thing still missing. */
 const BRAND = 'ColdenJames';
+/* One number everywhere: the site, the prospect page and the letter. */
+const PHONE = require('../../site/content.js').BUSINESS.phone;
 
 const FONT_CSS_URL =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap';
@@ -115,7 +116,7 @@ function letterHtml(row, rec, code) {
   </div>
   <p>$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
   <p>If it's not for you, no hard feelings. If it is, text me.</p>
-  <p class="sig">Steven Cowie<br>[PHONE]</p>
+  <p class="sig">Steven Cowie<br>${esc(PHONE)}</p>
   <p class="smsnote">${esc(LETTER_SMS_LINE)}</p>
   <p class="foot">Sent to the mailing address on your state contractor license.<br>Text STOP to the number above and you won't hear from me again.</p>
 </section>`;
@@ -141,17 +142,20 @@ body {
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   color: #1C1917;
   font-size: 11.5pt;
-  line-height: 1.55;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 .page {
   width: 8.5in; height: 11in; box-sizing: border-box;
-  padding: 0.95in 1.1in 0.8in;
+  /* 0.85in top and 0.6in bottom make room for the texting line under the
+     number without spilling onto a second page; 0.6in is still well inside
+     any printer's margin. */
+  padding: 0.85in 1.1in 0.6in;
   page-break-after: always; break-after: page;
   display: flex; flex-direction: column;
 }
 .page:last-child { page-break-after: auto; break-after: auto; }
-p { margin: 0 0 10.5pt; }
+p { margin: 0 0 9pt; }
 .head { margin-bottom: 9pt; }
 .bizname { font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 3pt; }
 .bizaddr { font-size: 10pt; margin: 0; }
@@ -169,11 +173,11 @@ p { margin: 0 0 10.5pt; }
 .url { font-size: 10.5pt; margin: 7pt 0 0; }
 .sig { margin-top: 14pt; margin-bottom: 0; }
 /* Directly under the number, small: what a caller agrees to by calling. */
-.smsnote { font-size: 8.5pt; line-height: 1.45; color: #57534E; margin: 3pt 0 0; }
+.smsnote { font-size: 8.5pt; line-height: 1.45; color: #57534E; margin: 3pt 0 0; text-wrap: balance; }
 /* Two deliberate lines, broken where the sentence breaks, so no word is
    left stranded on a line of its own. */
 .foot {
-  margin-top: auto; padding-top: 20pt;
+  margin-top: auto; padding-top: 10pt;
   font-size: 8.5pt; line-height: 1.45; color: #57534E;
   max-width: 5.4in;
 }`;
@@ -243,4 +247,11 @@ ${built.map(b => b.html).join('\n')}
   }
 }
 
-main().catch(err => { console.error(err.message); process.exit(1); });
+/* Run as a script it renders the pilot. Required, it only lends out the
+   template, so one letter can be rendered from an invented record without
+   reading or writing anything real. */
+if (require.main === module) {
+  main().catch(err => { console.error(err.message); process.exit(1); });
+}
+
+module.exports = { letterHtml, pageCss, ensureFonts, findChrome };

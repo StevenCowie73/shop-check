@@ -454,6 +454,22 @@ test('the privacy page still says mobile information is not shared', () => {
 test('the letter template prints the texting line directly under the number', () => {
   const src = fs.readFileSync(path.join(ROOT, 'finder', 'pilot', '10-render-letters.js'), 'utf8');
   assert.match(src, /require\('\.\.\/\.\.\/lib\/texting-copy\.js'\)/);
-  assert.match(src, /<p class="sig">Steven Cowie<br>\[PHONE\]<\/p>\n\s*<p class="smsnote">\$\{esc\(LETTER_SMS_LINE\)\}<\/p>/);
+  assert.match(src, /<p class="sig">Steven Cowie<br>\$\{esc\(PHONE\)\}<\/p>\n\s*<p class="smsnote">\$\{esc\(LETTER_SMS_LINE\)\}<\/p>/);
+  assert.strictEqual(src.includes('[PHONE]'), false, 'no placeholder left');
   assert.match(src, /\.smsnote \{ font-size: 8\.5pt;/, 'small');
+});
+
+test('a letter from an invented record carries the number and the texting line under it', () => {
+  const { letterHtml } = require('../finder/pilot/10-render-letters.js');
+  const { html } = letterHtml(
+    { company: 'MARSH LANE FENCING LLC', rank: 1, websiteState: 'not found', emailUsable: false },
+    { qualifyingParties: ['DALE EXAMPLE'], websiteAudit: null },
+    { ref: 'DEMO2026', url: 'https://coldenjames.com/p/DEMO2026?c=letter',
+      printed: 'coldenjames.com/p/DEMO2026', image: 'data:image/png;base64,' });
+  const { LETTER_SMS_LINE } = require('../lib/texting-copy.js');
+  const esc = t => t.replace(/&/g, '&amp;');
+  assert.ok(html.includes('<p class="sig">Steven Cowie<br>(318) 666-6445</p>\n  <p class="smsnote">' +
+    esc(LETTER_SMS_LINE) + '</p>'));
+  assert.ok(html.includes('Dale —'));
+  assert.ok(html.includes('Marsh Lane Fencing'));
 });
