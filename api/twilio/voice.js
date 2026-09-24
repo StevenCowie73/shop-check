@@ -8,7 +8,7 @@
    which is where the text-back decision is made. */
 
 const { authorize, twiml, escapeXml, requestUrl } = require('../../lib/twilio.js');
-const { VOICE_DISCLOSURE } = require('../../lib/texting-copy.js');
+const { play } = require('../../lib/voice-audio.js');
 
 const RING_SECONDS = 20;
 
@@ -24,8 +24,9 @@ module.exports = async function handler(req, res) {
   /* Every caller hears the disclosure before anything rings, whatever
      TEXTING_LIVE says. It is the opt-in the carriers review the texting
      program on, so a reviewer's test call has to hear it even while the
-     text itself is still switched off. */
-  const disclosure = `<Say>${escapeXml(VOICE_DISCLOSURE)}</Say>`;
+     text itself is still switched off. It is a recording of the exact
+     VOICE_DISCLOSURE wording in lib/texting-copy.js. */
+  const disclosure = play(req, 'greeting');
 
   twiml(res,
     disclosure +

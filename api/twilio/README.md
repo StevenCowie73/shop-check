@@ -40,4 +40,14 @@ a missing configuration should be visible, not a crash Twilio retries into.
 - **No password.** These are not behind Signal's `LOOKUP_PASSWORD`; Twilio
   cannot send one, and the signature is the authentication.
 
+## What the caller hears
+
+Recordings in the ColdenJames voice (ElevenLabs, "Alice"), served from
+`public/audio/` on the same deployment, not Twilio's built-in voice. The
+wording lives in `lib/texting-copy.js`; after changing it, run
+`node scripts/make-voice-recordings.js` (needs `ELEVENLABS_API_KEY` in
+`finder/.env`) and commit the new files. A test fails if a recording no
+longer matches its wording. The greeting is quoted word for word in the
+texting campaign, so changing it means updating the campaign too.
+
 Run the tests with `npm test` from the repository root. They never call Twilio.

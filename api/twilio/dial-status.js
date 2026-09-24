@@ -11,6 +11,7 @@
 
 const { authorize, twiml, sendSms, textedWithin, textingLive } = require('../../lib/twilio.js');
 const { MISSED_CALL_TEXT } = require('../../lib/texting-copy.js');
+const { play } = require('../../lib/voice-audio.js');
 
 const DEFAULT_TEXT = MISSED_CALL_TEXT;
 
@@ -34,7 +35,7 @@ module.exports = async function handler(req, res) {
      telling the caller a text is on its way would be untrue. See
      textingLive in lib/twilio.js. */
   if (!textingLive()) {
-    twiml(res, "<Say>Sorry I missed you. I'll call you back.</Say><Hangup/>");
+    twiml(res, play(req, 'missed-call-off') + '<Hangup/>');
     return;
   }
 
@@ -57,7 +58,7 @@ module.exports = async function handler(req, res) {
   }
 
   if (alreadyTexted) {
-    twiml(res, "<Say>Sorry I missed you. I'll call you back.</Say><Hangup/>");
+    twiml(res, play(req, 'missed-call-off') + '<Hangup/>');
     return;
   }
 
@@ -72,5 +73,5 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  twiml(res, "<Say>Sorry I missed you. I've just sent you a text.</Say><Hangup/>");
+  twiml(res, play(req, 'missed-call-on') + '<Hangup/>');
 };

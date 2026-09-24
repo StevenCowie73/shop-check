@@ -1,0 +1,25 @@
+{
+  "voice": {
+    "id": "Xb7hH8MSUJpSbSDYk0k2",
+    "name": "Alice"
+  },
+  "model": "eleven_multilingual_v2",
+  "format": "mp3_22050_32",
+  "recordings": {
+    "greeting": {
+      "file": "greeting-f68b002991.mp3",
+      "text": "Thanks for calling ColdenJames. If I miss your call, I'll text you back at this number. Message and data rates may apply. Reply STOP to opt out.",
+      "sha256": "c3093eecff45693e5900ac7e367945b24ece0526bb6a5d591e29c8591ae9025a"
+    },
+    "missed-call-off": {
+      "file": "missed-call-off-3f15b86261.mp3",
+      "text": "Sorry we missed you. Steven will call you back.",
+      "sha256": "add154ff0b85fb8ce3c6766e9592a8969f223d62f1ac971bb688b71fbda9792b"
+    },
+    "missed-call-on": {
+      "file": "missed-call-on-5205fe60d2.mp3",
+      "text": "Sorry we missed you. We've just sent you a text.",
+      "sha256": "0ef583165350ebdeb31b4ac6c202eb14bbf5b1a7d202abf01360fd62e8a942f7"
+    }
+  }
+}

@@ -93,6 +93,12 @@ function captureSends(fn, { recent = [], lookup = 'ok' } = {}) {
   })();
 }
 
+/* What the routes should play, by recording name: an absolute URL on the
+   host Twilio called, pointing at the file voice.json names. */
+const { recordings: RECORDINGS } = require('../public/audio/voice.json');
+const PLAY = name => '<Play>' + BASE + '/audio/' + RECORDINGS[name].file + '</Play>';
+const plays = (body, name) => body.includes(PLAY(name));
+
 const routes = {
   voice: require('../api/twilio/voice.js'),
   dialStatus: require('../api/twilio/dial-status.js'),
@@ -178,11 +184,12 @@ test('voice dials the owner for 20 seconds with the caller as caller id', async 
   });
 });
 
-test('the disclosure plays before the call rings through, whatever TEXTING_LIVE says', async () => {
+test('the recorded disclosure plays before the call rings through, whatever TEXTING_LIVE says', async () => {
   const { VOICE_DISCLOSURE } = require('../lib/texting-copy.js');
   assert.strictEqual(VOICE_DISCLOSURE,
     "Thanks for calling ColdenJames. If I miss your call, I'll text you back at this number. " +
     'Message and data rates may apply. Reply STOP to opt out.');
+  assert.strictEqual(RECORDINGS.greeting.text, VOICE_DISCLOSURE, 'the greeting recording is of that wording');
   for (const flag of [undefined, '', 'false', 'TRUE', 'true']) {
     const env = flag === undefined ? CONFIGURED : { ...CONFIGURED, TEXTING_LIVE: flag };
     await withEnv(env, async () => {
@@ -190,12 +197,12 @@ test('the disclosure plays before the call rings through, whatever TEXTING_LIVE 
       await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
       const label = 'TEXTING_LIVE ' + JSON.stringify(flag);
       assert.strictEqual(res.statusCode, 200, label);
-      const say = /<Say>([^<]*)<\/Say>/.exec(res.body);
-      assert.ok(say, 'a disclosure is spoken with ' + label);
-      assert.strictEqual(say[1].replace(/&apos;/g, "'"), VOICE_DISCLOSURE, label);
-      assert.match(res.body, /<Response><Say>[^<]*<\/Say><Dial timeout="20"/, 'Say first, then Dial: ' + label);
+      assert.ok(res.body.startsWith('<?xml') || res.body.includes('<Response>'), label);
+      assert.ok(res.body.includes('<Response>' + PLAY('greeting') + '<Dial timeout="20"'),
+        'Play the greeting first, then Dial: ' + label);
       assert.match(res.body, new RegExp('<Number>\\' + OWNER + '</Number>'), label);
-      assert.strictEqual((res.body.match(/<Say>/g) || []).length, 1, 'said once: ' + label);
+      assert.strictEqual((res.body.match(/<Play>/g) || []).length, 1, 'played once: ' + label);
+      assert.strictEqual(res.body.includes('<Say>'), false, 'no robot voice: ' + label);
     });
   }
 });
@@ -216,6 +223,7 @@ test('an answered call sends nothing and just hangs up', async () => {
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.body.includes('<Hangup/>'), true);
+    assert.strictEqual(res.body.includes('<Play>'), false);
     assert.strictEqual(res.body.includes('<Say>'), false);
     assert.deepStrictEqual(sent, []);
   }));
@@ -238,7 +246,7 @@ for (const status of ['no-answer', 'busy', 'failed', 'canceled']) {
       assert.match(sent[0].init.headers.Authorization, /^Basic /);
 
       assert.strictEqual(res.statusCode, 200);
-      assert.match(res.body, /<Say>Sorry I missed you\. I've just sent you a text\.<\/Say>/);
+      assert.ok(plays(res.body, 'missed-call-on'), 'plays "we\'ve just sent you a text"');
       assert.match(res.body, /<Hangup\/>/);
     }));
   });
@@ -276,7 +284,7 @@ test('when Twilio refuses the message the caller is not promised one', async () 
       await routes.dialStatus(
         fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
       assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.includes('<Say>'), false, 'must not claim a text was sent');
+      assert.strictEqual(res.body.includes('<Play>'), false, 'must not claim a text was sent');
       assert.match(res.body, /<Hangup\/>/);
     } finally { global.fetch = realFetch; }
   });
@@ -297,7 +305,7 @@ test('a first call in 24 hours gets the text', async () => {
     assert.match(looked[0], /DateSent%3E=/, 'within a window');
 
     assert.strictEqual(sent.length, 1, 'and sent the text');
-    assert.match(res.body, /<Say>Sorry I missed you\. I've just sent you a text\.<\/Say>/);
+    assert.ok(plays(res.body, 'missed-call-on'));
   }, { recent: [] }));
 });
 
@@ -309,9 +317,9 @@ test('a second call within 24 hours gets no text, and a different line', async (
 
     assert.strictEqual(looked.length, 1, 'it asked');
     assert.deepStrictEqual(sent, [], 'and sent nothing');
-    assert.match(res.body, /<Say>Sorry I missed you\. I'll call you back\.<\/Say>/);
+    assert.ok(plays(res.body, 'missed-call-off'), 'plays "Steven will call you back"');
     assert.match(res.body, /<Hangup\/>/);
-    assert.strictEqual(res.body.includes("just sent you a text"), false,
+    assert.strictEqual(plays(res.body, 'missed-call-on'), false,
       'must not claim a text that was not sent');
   }, { recent: [{ sid: 'SMearlier' }] }));
 });
@@ -324,7 +332,7 @@ test('if the lookup fails the text goes out anyway', async () => {
 
     assert.strictEqual(looked.length, 1, 'it tried to ask');
     assert.strictEqual(sent.length, 1, 'a missed text is worse than a duplicate');
-    assert.match(res.body, /just sent you a text/);
+    assert.ok(plays(res.body, 'missed-call-on'));
   }, { lookup: 'fail' }));
 });
 
@@ -350,9 +358,9 @@ for (const flag of [undefined, '', 'false', 'TRUE', '1', 'yes']) {
       assert.deepStrictEqual(sent, [], 'no text');
       assert.deepStrictEqual(looked, [], 'no lookup either');
       assert.strictEqual(res.statusCode, 200);
-      assert.match(res.body, /<Say>Sorry I missed you\. I'll call you back\.<\/Say>/);
+      assert.ok(plays(res.body, 'missed-call-off'), 'plays "Steven will call you back"');
       assert.match(res.body, /<Hangup\/>/);
-      assert.strictEqual(res.body.includes('sent you a text'), false);
+      assert.strictEqual(plays(res.body, 'missed-call-on'), false);
     }));
   });
 }
@@ -362,6 +370,7 @@ test('with texting off an answered call still just hangs up', async () => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
+    assert.strictEqual(res.body.includes('<Play>'), false);
     assert.strictEqual(res.body.includes('<Say>'), false);
     assert.match(res.body, /<Hangup\/>/);
     assert.deepStrictEqual(sent, []);
@@ -374,7 +383,7 @@ test('TEXTING_LIVE "true" with stray whitespace still counts as on', async () =>
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'busy' }), res);
     assert.strictEqual(sent.length, 1);
-    assert.match(res.body, /just sent you a text/);
+    assert.ok(plays(res.body, 'missed-call-on'));
   }));
 });
 
@@ -440,4 +449,40 @@ test('the signature is computed over url plus sorted parameters', () => {
   const crypto = require('node:crypto');
   const byHand = crypto.createHmac('sha1', TOKEN).update('https://x.test/hookA1B2').digest('base64');
   assert.strictEqual(expectedSignature(TOKEN, 'https://x.test/hook', params), byHand);
+});
+
+/* ---------- the recordings ---------- */
+
+test('every recording is of the exact wording in lib/texting-copy.js', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+  const { SPOKEN } = require('../lib/texting-copy.js');
+  const manifest = require('../public/audio/voice.json');
+  assert.deepStrictEqual(Object.keys(manifest.recordings).sort(), Object.keys(SPOKEN).sort(),
+    'one recording per spoken sentence — run node scripts/make-voice-recordings.js');
+  for (const [name, text] of Object.entries(SPOKEN)) {
+    const rec = manifest.recordings[name];
+    assert.strictEqual(rec.text, text, name + ' was recorded from different wording — re-record it');
+    const file = path.join(__dirname, '..', 'public', 'audio', rec.file);
+    assert.ok(fs.existsSync(file), rec.file + ' is committed');
+    const bytes = fs.readFileSync(file);
+    assert.strictEqual(crypto.createHash('sha256').update(bytes).digest('hex'), rec.sha256, rec.file + ' unchanged');
+    assert.ok(bytes.length < 100 * 1024, rec.file + ' is small enough to load quickly on a call');
+  }
+  assert.strictEqual(manifest.voice.id, 'Xb7hH8MSUJpSbSDYk0k2', 'Alice');
+  assert.strictEqual(manifest.model, 'eleven_multilingual_v2');
+  assert.strictEqual(SPOKEN['missed-call-off'], 'Sorry we missed you. Steven will call you back.');
+  assert.strictEqual(SPOKEN['missed-call-on'], "Sorry we missed you. We've just sent you a text.");
+});
+
+test('the audio URL follows the host Twilio called, or PUBLIC_BASE_URL', async () => {
+  const { audioUrl } = require('../lib/voice-audio.js');
+  const file = RECORDINGS.greeting.file;
+  assert.strictEqual(audioUrl(fakeReq('/api/twilio/voice', {}), 'greeting'), BASE + '/audio/' + file);
+  await withEnv({ PUBLIC_BASE_URL: 'https://signal.example.test' }, async () => {
+    assert.strictEqual(audioUrl(fakeReq('/api/twilio/voice', {}), 'greeting'),
+      'https://signal.example.test/audio/' + file);
+  });
+  assert.throws(() => audioUrl(fakeReq('/api/twilio/voice', {}), 'nope'), /no recording called nope/);
 });
