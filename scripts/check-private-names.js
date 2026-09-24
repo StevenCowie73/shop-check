@@ -146,6 +146,15 @@ if (!sourcesFound || !names.size) {
   process.exit(0);
 }
 
+/* A second line of defence that does not depend on .gitignore being right.
+   Every out/ directory in this repository holds generated prospect data, so
+   a staged path inside one is a mistake whatever the file contains — and an
+   edited or missing .gitignore is exactly when the name check is least
+   likely to save you, because the data file would be staged wholesale. */
+function stagedUnderOut(files) {
+  return files.filter(f => /(^|\/)out\//.test(f));
+}
+
 function filesToCheck() {
   const cmd = ALL
     ? 'git ls-files'
@@ -158,8 +167,24 @@ function filesToCheck() {
    example files that exist to show the shape without real data. */
 const ALLOWED = [/^scripts\/check-private-names\.js$/, /\.example\.json$/];
 
+const staged = filesToCheck();
+
+const underOut = ALL ? [] : stagedUnderOut(staged);
+if (underOut.length) {
+  console.error('');
+  console.error('  COMMIT REFUSED — a file under an out/ directory is staged.');
+  console.error('  Those directories hold generated prospect data and are never committed.');
+  console.error('');
+  for (const f of underOut) console.error('    ' + f);
+  console.error('');
+  console.error('  Unstage it:  git restore --staged ' + underOut[0]);
+  console.error('  If .gitignore has lost an entry, put it back.');
+  console.error('');
+  process.exit(1);
+}
+
 const hits = [];
-for (const rel of filesToCheck()) {
+for (const rel of staged) {
   if (ALLOWED.some(re => re.test(rel))) continue;
   const file = path.join(ROOT, rel);
   if (!fs.existsSync(file)) continue;

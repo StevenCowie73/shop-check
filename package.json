@@ -12,6 +12,7 @@
   },
   "scripts": {
     "hooks:install": "node scripts/install-hooks.js",
-    "check:names": "node scripts/check-private-names.js --all"
+    "check:names": "node scripts/check-private-names.js --all",
+    "test": "node --test tests/*.test.js"
   }
 }
