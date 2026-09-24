@@ -165,7 +165,7 @@ test('the committed HTML is what the content file generates', () => {
 
 test('the homepage says the things it must say', () => {
   const html = fs.readFileSync(path.join(OUT, 'index.html'), 'utf8');
-  assert.match(html, /<h1>ColdenJames<\/h1>/);
+  assert.match(html, /<h1 class="mark"><svg [^>]*role="img" aria-label="ColdenJames">/, 'the wordmark is the heading');
   assert.ok(html.includes(C.HOME.tagline));
   assert.ok(html.includes('$79 a month'));
   for (const point of C.HOME.price.points) assert.ok(html.includes(point), point);
@@ -472,4 +472,70 @@ test('a letter from an invented record carries the number and the texting line u
     esc(LETTER_SMS_LINE) + '</p>'));
   assert.ok(html.includes('Dale —'));
   assert.ok(html.includes('Marsh Lane Fencing'));
+});
+
+/* ---------- the mark ---------- */
+
+test('the wordmark and icon are outlines in the brand colours, split at each letter', () => {
+  const { WORDMARK, ICON } = require('../site/brand-svg.js');
+  for (const [name, svg] of [['wordmark', WORDMARK], ['icon', ICON]]) {
+    assert.strictEqual(/<text|<tspan|font-family/.test(svg), false, name + ' has no live text');
+    assert.match(svg, /role="img" aria-label="ColdenJames"/, name + ' is named');
+    assert.ok(svg.includes('fill="#C4501B"') && svg.includes('fill="#3F7FC0"'), name + ' has rust and blue');
+    assert.strictEqual(/linear-gradient|<linearGradient/.test(svg), false, name + ' is a hard split, no blend');
+  }
+  assert.strictEqual((WORDMARK.match(/<clipPath/g) || []).length, 2, 'the C and the J, nothing else');
+  assert.ok(WORDMARK.includes('fill="#1C1917"'), 'the rest is ink');
+  assert.ok(ICON.includes('fill="#F4EFE6"'), 'the icon sits on cream');
+  for (const f of ['wordmark.svg', 'icon.svg']) {
+    const onDisk = fs.readFileSync(path.join(ROOT, 'public', 'brand', f), 'utf8').trim();
+    assert.strictEqual(onDisk, f === 'icon.svg' ? ICON : WORDMARK, f + ' matches site/brand-svg.js');
+  }
+});
+
+test('brand blue is a token and appears nowhere but the mark', () => {
+  const { CSS } = require('../site/shell.js');
+  assert.match(CSS, /--brand-blue: #3F7FC0;/);
+  const { WORDMARK } = require('../site/brand-svg.js');
+  for (const f of ['index.html', 'privacy.html', 'terms.html', 'sms.html', 'setup.html', '404.html']) {
+    const html = fs.readFileSync(path.join(OUT, f), 'utf8')
+      .split(WORDMARK).join('').replace(/--brand-blue: #3F7FC0;/, '');
+    assert.strictEqual(/#3F7FC0|var\(--brand-blue\)/i.test(html), false, f + ' uses brand blue outside the mark');
+  }
+});
+
+test('every page shows the wordmark in its header, named ColdenJames', () => {
+  const { WORDMARK } = require('../site/brand-svg.js');
+  for (const f of ['index.html', 'privacy.html', 'terms.html', 'sms.html', 'setup.html', '404.html']) {
+    const html = fs.readFileSync(path.join(OUT, f), 'utf8');
+    const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
+    assert.ok(header.includes(WORDMARK), f);
+  }
+});
+
+test('every page links the favicons, and the site host serves exactly those files', async () => {
+  for (const f of ['index.html', 'terms.html', '404.html']) {
+    const html = fs.readFileSync(path.join(OUT, f), 'utf8');
+    assert.match(html, /<link rel="icon" href="\/brand\/icon\.svg" type="image\/svg\+xml">/, f);
+    assert.match(html, /<link rel="icon" href="\/brand\/favicon-32\.png" sizes="32x32" type="image\/png">/, f);
+    assert.match(html, /<link rel="apple-touch-icon" href="\/brand\/apple-touch-icon\.png">/, f);
+  }
+  for (const p of ['/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/apple-touch-icon.png']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public', p)), p + ' is committed');
+    const res = middleware(req('coldenjames.com', p));
+    assert.strictEqual(res.headers.get('x-middleware-next'), '1', p + ' is passed through to the file');
+  }
+  const res = middleware(req('coldenjames.com', '/brand/nope.svg'));
+  assert.strictEqual(res.status, 404, 'nothing else under /brand/');
+});
+
+test('the letter template uses the wordmark as its letterhead', () => {
+  const { letterHtml } = require('../finder/pilot/10-render-letters.js');
+  const { WORDMARK } = require('../site/brand-svg.js');
+  const { html } = letterHtml(
+    { company: 'MARSH LANE FENCING LLC', rank: 1, websiteState: 'not found', emailUsable: false },
+    { qualifyingParties: ['DALE EXAMPLE'], websiteAudit: null },
+    { ref: 'DEMO2026', url: 'https://coldenjames.com/p/DEMO2026?c=letter',
+      printed: 'coldenjames.com/p/DEMO2026', image: 'data:image/png;base64,' });
+  assert.ok(html.includes('<div class="bizname">' + WORDMARK + '</div>'));
 });

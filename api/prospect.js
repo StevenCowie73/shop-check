@@ -14,7 +14,7 @@
 const { getProspect } = require('../site/prospects.js');
 const { websiteFinding } = require('../lib/website-finding.js');
 const C = require('../site/content.js');
-const { pageShell, esc } = require('../site/shell.js');
+const { pageShell, esc, brandLink } = require('../site/shell.js');
 const { clientKey, counter, distinctCounter, retryAfter } = require('../lib/ratelimit.js');
 
 const INTAKE_URL = 'https://stevencowie73.github.io/shop-check';
@@ -102,6 +102,7 @@ function render(p, channel) {
     : '';
 
   const body = `<header>
+  ${brandLink()}
   <h1>${esc(p.business)}</h1>
   <p class="tagline">Here's what I found.</p>
 </header>

@@ -29,8 +29,10 @@ const { prospectUrl } = require('../../lib/refs.js');
    quotes as "what the letter says", so both read it from one place. */
 const { LETTER_SMS_LINE } = require('../../lib/texting-copy.js');
 
-/* The letterhead. The address is the one thing still missing. */
-const BRAND = 'ColdenJames';
+/* The letterhead: the ColdenJames wordmark, drawn as outlines so it prints
+   the same whatever fonts the renderer has. The address is the one thing
+   still missing. */
+const { WORDMARK } = require('../../site/brand-svg.js');
 /* One number everywhere: the site, the prospect page and the letter. */
 const PHONE = require('../../site/content.js').BUSINESS.phone;
 
@@ -99,7 +101,7 @@ function letterHtml(row, rec, code) {
 
   const html = `<section class="page">
   <header class="head">
-    <p class="bizname">${esc(BRAND)}</p>
+    <div class="bizname">${WORDMARK}</div>
     <p class="bizaddr">[MAILING ADDRESS]</p>
   </header>
   <div class="rule"></div>
@@ -157,7 +159,8 @@ body {
 .page:last-child { page-break-after: auto; break-after: auto; }
 p { margin: 0 0 9pt; }
 .head { margin-bottom: 9pt; }
-.bizname { font-size: 16pt; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 3pt; }
+.bizname { margin: 0 0 5pt; }
+.bizname svg { display: block; height: 0.2in; width: auto; }
 .bizaddr { font-size: 10pt; margin: 0; }
 /* The page is a column flex container, so a 1.3pt box shrinks to nothing
    unless it is told not to. That is how this rule once vanished silently. */

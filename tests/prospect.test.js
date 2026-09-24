@@ -65,6 +65,8 @@ test('the demo page renders, and is noindex', async () => {
 
   const html = res.body;
   assert.match(html, /<h1>Marsh Lane Fencing<\/h1>/);
+  assert.ok(html.includes(require('../site/brand-svg.js').WORDMARK), 'the wordmark heads the page');
+  assert.match(html, /<link rel="icon" href="\/brand\/icon\.svg"/, 'and the favicon');
   assert.ok(html.includes("Here's what I found."));
   assert.ok(html.includes('they call the next fence company'), 'uses the trade noun');
   assert.ok(html.includes('Hi, this is Dale at Marsh Lane Fencing.'), 'the text-back names the owner');

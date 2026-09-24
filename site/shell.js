@@ -20,6 +20,9 @@ const CSS = `
   --line: #CFC6B6;
   --accent: #C4501B;
   --callout: #F3E7D3;
+  /* The blue half of the C and the J in the mark (blue eyes; the rust half
+     is --accent, red hair). Used in the mark and nowhere else. */
+  --brand-blue: #3F7FC0;
   --radius: 8px;
 }
 * { box-sizing: border-box; }
@@ -48,6 +51,15 @@ h1 {
   color: var(--muted); text-wrap: pretty; max-width: 30em;
 }
 .rule { height: 2px; background: var(--line); margin: 0 0 32px; }
+
+/* ---- the mark ---- */
+/* The wordmark is drawn as outlines (site/brand-svg.js), so it looks the
+   same with or without the web font. Heights are its ink height: 32px sits
+   where 40px type used to, 15px where the 15px back link was. */
+.mark svg { display: block; height: 32px; width: auto; max-width: 100%; }
+.brand-link { display: inline-block; margin: 0 0 14px; }
+.brand-link svg, .back svg { display: inline-block; height: 15px; width: auto; vertical-align: -2px; }
+.back { text-decoration: none; }
 
 h2 {
   margin: 34px 0 8px;
@@ -179,6 +191,9 @@ function pageShell({ title, description, body, extraCss }) {
 <meta name="color-scheme" content="light">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
+<link rel="icon" href="/brand/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -196,4 +211,9 @@ ${body}
 }
 
 
-module.exports = { pageShell, esc, CSS };
+/* The wordmark for a header: the heading itself on the homepage, a small
+   link home everywhere else. Its accessible name is "ColdenJames". */
+const { WORDMARK } = require('./brand-svg.js');
+const brandLink = () => `<a class="brand-link" href="/">${WORDMARK}</a>`;
+
+module.exports = { pageShell, esc, CSS, WORDMARK, brandLink };

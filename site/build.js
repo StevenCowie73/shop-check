@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const C = require('./content.js');
 const { CARRIERS, READ_ON } = require('./carriers.js');
-const { pageShell, esc, CSS } = require('./shell.js');
+const { pageShell, esc, CSS, WORDMARK, brandLink } = require('./shell.js');
 
 const OUT = path.join(__dirname, '..', 'public', 'coldenjames');
 
@@ -59,7 +59,7 @@ function home() {
   const points = C.HOME.price.points.map(p => `<li>${esc(p)}</li>`).join('\n    ');
 
   const body = `<header>
-  <h1>${esc(C.BUSINESS.brand)}</h1>
+  <h1 class="mark">${WORDMARK}</h1>
   <p class="tagline">${esc(C.HOME.tagline)}</p>
 </header>
 <div class="rule"></div>
@@ -102,7 +102,7 @@ function legal(doc, slug) {
   }).join('\n\n');
 
   const body = `<header>
-  <a class="back" href="/">&larr; ${esc(C.BUSINESS.brand)}</a>
+  <a class="back" href="/">&larr; ${WORDMARK}</a>
   <h1>${esc(doc.title)}</h1>
 </header>
 <p class="draft">${esc(C.DRAFT_NOTE)}</p>
@@ -136,7 +136,7 @@ function smsPage() {
   const links = P.links.map(l => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' &middot; ');
 
   const body = `<header>
-  <a class="back" href="/">&larr; ${esc(C.BUSINESS.brand)}</a>
+  <a class="back" href="/">&larr; ${WORDMARK}</a>
   <h1>${esc(P.title)}</h1>
   <p class="tagline">${esc(P.intro)}</p>
 </header>
@@ -222,6 +222,7 @@ function setup() {
     : '';
 
   const body = `<header>
+  ${brandLink()}
   <h1>${esc(C.SETUP.title)}</h1>
   <p class="tagline">${esc(C.SETUP.intro)}</p>
 </header>
@@ -319,6 +320,7 @@ function sitemapXml() {
 
 function notFound() {
   const body = `<header>
+  ${brandLink()}
   <h1>${esc(C.NOT_FOUND.title)}</h1>
   <p class="tagline">${esc(C.NOT_FOUND.line)}</p>
 </header>

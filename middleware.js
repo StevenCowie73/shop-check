@@ -44,6 +44,10 @@ const PRIVATE_PAGES = {
   '/setup/': '/coldenjames/setup.html'
 };
 
+const BRAND_FILES = new Set([
+  '/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/apple-touch-icon.png'
+]);
+
 const INDEXABLE = 'index, follow';
 const HIDDEN = 'noindex, nofollow';
 
@@ -73,6 +77,11 @@ export default function middleware(request) {
       headers: { 'Content-Type': textFile[0], 'X-Robots-Tag': HIDDEN }
     });
   }
+
+  /* The mark and the favicons are plain files in public/brand/. Only the
+     four that exist are let through; anything else under /brand/ is the
+     same 404 as any other unknown path. */
+  if (BRAND_FILES.has(url.pathname)) return next();
 
   const hidden = PRIVATE_PAGES[url.pathname];
   if (hidden) {
