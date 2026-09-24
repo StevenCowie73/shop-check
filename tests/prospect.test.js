@@ -449,7 +449,7 @@ test('one address being refused does not refuse another', async () => {
   }
 });
 
-test('the tracking stub refuses a flood and refuses a walk', async () => {
+test('the tracking stub refuses a flood but never a spread of codes', async () => {
   trackRoute.resetLimits();
   try {
     const ip = { 'x-forwarded-for': '198.51.100.30' };
@@ -462,22 +462,45 @@ test('the tracking stub refuses a flood and refuses a walk', async () => {
       }), res);
       return res;
     };
-    let walkRefused = 0;
-    for (let i = 0; i < 25; i++) {
+    /* a mobile gateway that fifty prospects share is not a walker: this route
+       answers the same either way, so there is nothing to learn by trying
+       codes against it and nothing to refuse */
+    for (let i = 0; i < 50; i++) {
       const res = await send('TRACK' + String(i).padStart(3, '0'));
-      if (res.statusCode === 429) walkRefused++;
+      assert.strictEqual(res.statusCode, 204, 'refused code ' + i);
     }
-    assert.ok(walkRefused >= 10, 'only ' + walkRefused + ' of 25 codes were refused');
-    /* and the per-minute counter catches sheer volume on one code */
+    /* sheer volume is still refused */
     trackRoute.resetLimits();
     let floodRefused = 0;
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < 280; i++) {
       const res = await send('DEMO2026');
       if (res.statusCode === 429) floodRefused++;
     }
-    assert.ok(floodRefused > 0, 'a flood of 140 events was never refused');
+    assert.ok(floodRefused > 0, 'a flood of 280 events was never refused');
   } finally {
     trackRoute.resetLimits();
+  }
+});
+
+test('a prospect holding a letter is never rate limited', async () => {
+  /* the case a live burst caught: counting every request means everyone
+     behind one carrier gateway shares a budget, and the thirteenth person to
+     open their letter is turned away */
+  prospectRoute.resetLimits();
+  try {
+    const ip = { 'x-forwarded-for': '198.51.100.24' };
+    /* first exhaust the miss budget from that address ... */
+    for (let i = 0; i < 40; i++) {
+      await prospectRoute(fakeReq('/api/prospect?ref=DUD' + i, { headers: ip }), fakeRes());
+    }
+    /* ... then ask for a code that does resolve, from the same address */
+    for (let i = 0; i < 25; i++) {
+      const res = fakeRes();
+      await prospectRoute(fakeReq('/api/prospect?ref=' + DEMO_REF + '&c=letter', { headers: ip }), res);
+      assert.strictEqual(res.statusCode, 200, 'a real code was refused at ' + i);
+    }
+  } finally {
+    prospectRoute.resetLimits();
   }
 });
 

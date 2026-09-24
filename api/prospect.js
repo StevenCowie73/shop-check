@@ -19,15 +19,21 @@ const { clientKey, counter, distinctCounter, retryAfter } = require('../lib/rate
 
 const INTAKE_URL = 'https://stevencowie73.github.io/shop-check';
 
-/* Read lib/ratelimit.js before trusting these. Per instance, in memory, keyed
-   on the forwarded address, and generous enough that a family passing one
-   phone around never sees a 429.
+/* Read lib/ratelimit.js before trusting these.
 
-   Forty a minute is about twenty times what reading a page costs. Twelve
-   different codes in ten minutes is the one that bites: a prospect looks at
-   one, and only a script looks at a thirteenth. */
-const RATE = counter({ windowMs: 60 * 1000, max: 40 });
-const WALK = distinctCounter({ windowMs: 10 * 60 * 1000, max: 12 });
+   These only ever count requests for codes that do not resolve. A code that
+   does resolve belongs to somebody holding a letter, and their page is served
+   however many times they ask for it — the first version of this counted
+   every request, and a live burst through one address showed exactly what
+   that costs: everyone behind a shared mobile gateway sharing one budget, so
+   the thirteenth prospect to open their letter on that carrier gets a 429.
+   A walker learns nothing from a 404 either way, so the counting belongs on
+   the misses.
+
+   Twelve different dud codes in ten minutes, or forty misses in a minute,
+   and the rest are refused. */
+const MISS_RATE = counter({ windowMs: 60 * 1000, max: 40 });
+const MISS_WALK = distinctCounter({ windowMs: 10 * 60 * 1000, max: 12 });
 
 function notFound(res) {
   res.statusCode = 404;
@@ -332,23 +338,26 @@ module.exports = async function handler(req, res) {
   const channelRaw = String(url.searchParams.get('c') || '').toLowerCase();
   const channel = channelRaw === 'letter' || channelRaw === 'email' ? channelRaw : 'direct';
 
-  const who = clientKey(req);
-  const asked = String(ref || '').trim().toUpperCase();
-  if (RATE.exceeded(who) || WALK.exceeded(who, asked)) {
-    res.statusCode = 429;
-    res.setHeader('Retry-After', retryAfter(RATE.windowMs));
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.end('Too many requests.\n');
-    return;
-  }
-
   let prospect = null;
   try {
     prospect = await getProspect(ref);
   } catch (err) {
     console.error('prospect lookup failed: ' + (err && err.message));
   }
-  if (!prospect) { notFound(res); return; }
+
+  if (!prospect) {
+    const who = clientKey(req);
+    const asked = String(ref || '').trim().toUpperCase();
+    if (MISS_RATE.exceeded(who) || MISS_WALK.exceeded(who, asked)) {
+      res.statusCode = 429;
+      res.setHeader('Retry-After', retryAfter(MISS_RATE.windowMs));
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end('Too many requests.\n');
+      return;
+    }
+    notFound(res);
+    return;
+  }
 
   res.statusCode = 200;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -356,9 +365,9 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.render = render;
-module.exports.RATE = RATE;
-module.exports.WALK = WALK;
+module.exports.MISS_RATE = MISS_RATE;
+module.exports.MISS_WALK = MISS_WALK;
 /* Tests and local runs share one process, so the counters need emptying
    between cases that are deliberately over the limit. */
-module.exports.resetLimits = function () { RATE.reset(); WALK.reset(); };
+module.exports.resetLimits = function () { MISS_RATE.reset(); MISS_WALK.reset(); };
 module.exports.PROSPECT_CSS = PROSPECT_CSS;
