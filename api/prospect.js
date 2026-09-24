@@ -70,7 +70,7 @@ function phoneDemo(p) {
 }
 
 function render(p, channel) {
-  const finding = websiteFinding(p.websiteState, p.websiteAudit);
+  const finding = websiteFinding(p.websiteState, p.websiteAudit, { surface: 'page' });
   const brand = C.BUSINESS.brand;
 
   /* Two actions once there is a number to put in them, because half the
@@ -291,8 +291,11 @@ section { margin: 0 0 6px; }
   max-width: 85%; padding: 11px 14px; border-radius: 14px;
   font-size: 16px; line-height: 1.45; text-wrap: pretty;
 }
-.bubble.out { align-self: flex-start; background: var(--callout); border: 1px solid var(--line); }
-.bubble.in { align-self: flex-end; background: var(--ground); border: 1px solid var(--line); }
+/* The business's side — the auto-text and the owner's reply — is on the
+   right in the accent tint, the way your own messages sit on your phone.
+   The caller is on the left, neutral. */
+.bubble.out { align-self: flex-end; background: var(--callout); border: 1px solid var(--line); }
+.bubble.in { align-self: flex-start; background: var(--ground); border: 1px solid var(--line); }
 .beat-note { font-size: 14px; color: var(--muted); margin: 4px 0 0; }
 .replay {
   margin-top: 12px; min-height: 48px; width: 100%;

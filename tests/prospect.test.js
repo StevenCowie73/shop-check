@@ -88,7 +88,8 @@ test('a section the record cannot support is left out', async () => {
   assert.strictEqual(res.body.includes('id="listing"'), false);
   /* and its website finding is "not found", so that section IS there */
   assert.ok(res.body.includes('Your website'));
-  assert.ok(res.body.includes("I also looked for your website and couldn't find one"));
+  assert.ok(res.body.includes("I looked for your website and couldn't find one"));
+  assert.strictEqual(/I also /.test(res.body), false, 'the page never says "also"');
 });
 
 test('the website wording is the same one the letter uses', () => {
@@ -97,6 +98,66 @@ test('the website wording is the same one the letter uses', () => {
     "I also looked for your website and couldn't find one, so people who search for you have nothing to click through to.");
   assert.strictEqual(websiteFinding('fine').text, '', 'nothing to say about a site that is fine');
   assert.strictEqual(websiteFinding('unknown').text, '', 'nothing to say about one we never saw');
+});
+
+/* Every branch that says something, with invented domains. */
+const FINDING_CASES = [
+  ['not found', null],
+  ['dead', { url: 'https://www.example-fence.test/', source: 'email', parked: true }],
+  ['dead', { url: 'https://example-fence.test', source: 'email', whatsWrong: 'Domain not found' }],
+  ['dead', { url: 'https://example-fence.test', source: 'email', whatsWrong: 'HTTP 500' }],
+  ['dead', { url: 'https://example-fence.test', source: 'astra', parked: true }],
+  ['dead', { url: 'https://example-fence.test', source: 'astra', whatsWrong: 'HTTP 500' }],
+  ['poor', { url: 'https://example-fence.test', source: 'email', signals: ['viewport'] }],
+  ['poor', { url: 'https://example-fence.test', source: 'astra', signals: ['viewport'] }]
+];
+
+test('the letter keeps "also" wherever it had it', () => {
+  const { websiteFinding } = require('../lib/website-finding.js');
+  const letter = FINDING_CASES.map(([s, a]) => websiteFinding(s, a).text);
+  assert.deepStrictEqual(letter, FINDING_CASES.map(([s, a]) => websiteFinding(s, a, { surface: 'letter' }).text),
+    'letter is the default');
+  assert.strictEqual(letter[0], "I also looked for your website and couldn't find one, so people who search for you have nothing to click through to.");
+  assert.strictEqual(letter[1], "I also tried example-fence.test, the web address from your business email, and it doesn't lead to a website.");
+  assert.strictEqual(letter[3], 'I also tried example-fence.test, the web address from your business email, and it comes back with an error.');
+  assert.strictEqual(letter[6], "I also looked at your website, example-fence.test. It doesn't work well on a phone, which is where most people look you up.");
+  assert.strictEqual(letter.filter(t => t.startsWith('I also ')).length, 6, 'every email-sourced line and the not-found line');
+});
+
+test('the page says the same thing without "also"', () => {
+  const { websiteFinding } = require('../lib/website-finding.js');
+  for (const [state, audit] of FINDING_CASES) {
+    const letter = websiteFinding(state, audit).text;
+    const page = websiteFinding(state, audit, { surface: 'page' }).text;
+    assert.ok(page, state + ' says something');
+    assert.strictEqual(/\balso\b/.test(page), false, 'no "also" on the page: ' + page);
+    assert.strictEqual(page, letter.replace(/^I also /, 'I '), 'only the opening differs');
+  }
+  assert.strictEqual(websiteFinding('not found', null, { surface: 'page' }).text,
+    "I looked for your website and couldn't find one, so people who search for you have nothing to click through to.");
+  assert.strictEqual(websiteFinding('dead', FINDING_CASES[3][1], { surface: 'page' }).text,
+    'I tried example-fence.test, the web address from your business email, and it comes back with an error.');
+  assert.strictEqual(websiteFinding('poor', FINDING_CASES[6][1], { surface: 'page' }).text,
+    "I looked at your website, example-fence.test. It doesn't work well on a phone, which is where most people look you up.");
+  assert.strictEqual(websiteFinding('fine', null, { surface: 'page' }).text, '');
+});
+
+test('in the mockup the business is on the right and the caller on the left', async () => {
+  const p = await getProspect(DEMO_REF);
+  const html = prospectRoute.render(p, 'letter');
+  const bubbles = [...html.matchAll(/<div class="bubble (out|in)" data-beat="(\d)">([^<]*)<\/div>/g)]
+    .map(m => ({ side: m[1], beat: m[2], text: m[3] }));
+  assert.deepStrictEqual(bubbles.map(b => b.side + b.beat), ['out2', 'in3', 'out4'],
+    'auto-text, caller, owner reply');
+  assert.match(bubbles[0].text, /Sorry I missed your call/, 'the auto-text is from the business');
+  assert.match(bubbles[2].text, /I can swing by/, 'the reply is from the business');
+
+  const css = prospectRoute.PROSPECT_CSS;
+  const rule = sel => (new RegExp(sel.replace(/\./g, '\\.') + '\\s*\\{([^}]*)\\}').exec(css) || [])[1] || '';
+  assert.match(rule('.bubble.out'), /align-self:\s*flex-end/, 'business on the right');
+  assert.match(rule('.bubble.out'), /background:\s*var\(--callout\)/, 'in the accent tint');
+  assert.match(rule('.bubble.in'), /align-self:\s*flex-start/, 'caller on the left');
+  assert.match(rule('.bubble.in'), /background:\s*var\(--ground\)/, 'neutral');
 });
 
 test('an unknown ref is a 404, not a page about nobody', async () => {
