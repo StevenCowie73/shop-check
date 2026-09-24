@@ -5,14 +5,10 @@
    Change the wording, the email, the address or the phone number here and
    run `npm run site:build`. Nothing else holds copy. */
 
-/* ------------------------------------------------------------------
-   >>> PHONE NUMBER PLACEHOLDER <<<
-   Left empty on purpose. While it is empty the phone line does not
-   appear on the site at all — better a missing line than a wrong number.
-   Put the business number here in the form people dial it, for example
-   (318) 555-0100, then run: npm run site:build
-   ------------------------------------------------------------------ */
-const PHONE = '';
+/* The business number, in the form people dial it. Set it to '' and the
+   phone line, the texting line under it and the prospect page's Text me /
+   Call me buttons all disappear. Then run: npm run site:build */
+const PHONE = '(318) 666-6445';
 
 const BUSINESS = {
   brand: 'ColdenJames',
@@ -100,6 +96,13 @@ const HOME = {
     "This doesn't replace you or anyone who works for you, and it isn't a " +
     "robot pretending to be you on the phone. It handles the stuff that " +
     "falls through the cracks when you're busy.",
+
+  /* Shown directly under the phone line, and only when there is one. The
+     wording is what the carriers look for when they review business
+     texting: what the texts are, how many, rates, STOP and HELP. */
+  smsLine: 'Call or text ' + PHONE + ". If I miss your call, you'll get one " +
+           "text back so you know I'll return it. Message and data rates may " +
+           'apply. Reply STOP to opt out, HELP for help.',
 
   setup:
     'I set the whole thing up. The one job on your side is changing a single ' +
@@ -222,6 +225,27 @@ const TERMS = {
         'contract and no minimum term.',
         'To cancel, send a text saying so. Cancellation takes effect at the ' +
         'end of the month you are in, and we will not bill you again.'
+      ]
+    },
+    {
+      /* What the carriers check for when they review a texting program.
+         **word** renders bold on the page; STOP and HELP are meant to stand
+         out. */
+      heading: 'Text messages (SMS)',
+      paragraphs: [
+        '**Program name:** ColdenJames missed-call text.',
+        '**What it is:** when someone calls a ColdenJames business number ' +
+        'and the call is not answered, the caller receives one text message ' +
+        'letting them know the call will be returned. Replies to that text ' +
+        'are passed to the business owner.',
+        '**Message frequency:** one text per missed call, at most one per ' +
+        'caller in any 24 hours. Recurring messages only if you reply.',
+        'Message and data rates may apply.',
+        '**Support:** ' + BUSINESS.email + ' or ' + PHONE + '.',
+        'Reply **STOP** to stop receiving messages. Reply **HELP** for help.',
+        'Carriers are not liable for delayed or undelivered messages.',
+        'Mobile information is not shared with third parties or affiliates ' +
+        'for marketing or promotional purposes.'
       ]
     },
     {

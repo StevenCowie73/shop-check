@@ -381,13 +381,31 @@ test('a configured phone number gives a text button and a call button', async ()
 
 test('with no phone number there is one email button and no dead links', async () => {
   const C = require('../site/content.js');
-  assert.strictEqual(C.BUSINESS.phone, '', 'the shipped config still has no number');
-  const p = await getProspect(DEMO_REF);
-  const html = prospectRoute.render(p, 'letter');
-  assert.ok(html.includes('>Email me<'));
-  assert.strictEqual(html.includes('>Call me<'), false);
-  assert.strictEqual(/href="tel:/.test(html), false, 'no tel: link with nothing to dial');
-  assert.strictEqual(/href="sms:/.test(html), false, 'no sms: link with nothing to text');
+  const saved = C.BUSINESS.phone;
+  try {
+    C.BUSINESS.phone = '';
+    const p = await getProspect(DEMO_REF);
+    const html = prospectRoute.render(p, 'letter');
+    assert.ok(html.includes('>Email me<'));
+    assert.strictEqual(html.includes('>Call me<'), false);
+    assert.strictEqual(/href="tel:/.test(html), false, 'no tel: link with nothing to dial');
+    assert.strictEqual(/href="sms:/.test(html), false, 'no sms: link with nothing to text');
+  } finally { C.BUSINESS.phone = saved; }
+});
+
+test('with a phone number there are Text me and Call me buttons that dial it', async () => {
+  const C = require('../site/content.js');
+  const saved = C.BUSINESS.phone;
+  try {
+    C.BUSINESS.phone = '(318) 555-0100';
+    const p = await getProspect(DEMO_REF);
+    const html = prospectRoute.render(p, 'letter');
+    assert.ok(html.includes('>Text me<'));
+    assert.ok(html.includes('>Call me<'));
+    assert.match(html, /href="tel:3185550100"/);
+    assert.match(html, /href="sms:3185550100\?/);
+    assert.strictEqual(html.includes('>Email me<'), false);
+  } finally { C.BUSINESS.phone = saved; }
 });
 
 test('call_tapped is an event the tracker accepts', () => {

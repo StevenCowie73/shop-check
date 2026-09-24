@@ -40,7 +40,16 @@ function contactBlock() {
   if (C.BUSINESS.mailingAddress) {
     rows.push(`<dt>Post</dt><dd>${esc(C.BUSINESS.mailingAddress)}</dd>`);
   }
-  return `<dl class="contact">\n  ${rows.join('\n  ')}\n</dl>`;
+  const dl = `<dl class="contact">\n  ${rows.join('\n  ')}\n</dl>`;
+  return C.BUSINESS.phone && C.HOME.smsLine
+    ? dl + `\n<p class="sms-note">${esc(C.HOME.smsLine)}</p>`
+    : dl;
+}
+
+/* Legal copy is plain text; the one markup it allows is **bold**, applied
+   after escaping so nothing in the copy can become HTML. */
+function inline(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
 
 function home() {
@@ -84,7 +93,7 @@ ${footer()}`;
 
 function legal(doc, slug) {
   const sections = doc.sections.map(s => {
-    const paras = s.paragraphs.map(p => `<p>${esc(p)}</p>`).join('\n');
+    const paras = s.paragraphs.map(p => `<p>${inline(p)}</p>`).join('\n');
     const links = (s.links || []).length
       ? '<p>' + s.links.map(l =>
           `<a href="${esc(l.href)}" rel="noopener">${esc(l.label)}</a>`).join('<br>') + '</p>'
