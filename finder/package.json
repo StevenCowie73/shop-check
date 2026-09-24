@@ -8,7 +8,19 @@
     "find": "node find-prospects.js",
     "calls": "node make-call-list.js",
     "sites": "node check-sites.js",
-    "judge": "node judge-prospects.js"
+    "judge": "node judge-prospects.js",
+    "pilot:walk": "node pilot/1-walk-lslbc.js",
+    "pilot:parse": "node pilot/2-parse-records.js",
+    "pilot:candidates": "node pilot/3-website-candidates.js",
+    "pilot:audit": "SHOP_CHECK_OUT_DIR=pilot/out/audit node check-sites.js",
+    "pilot:spine": "node pilot/4-build-spine.js",
+    "pilot:shortlist": "node pilot/5-shortlist.js",
+    "pilot:email": "node pilot/6-check-email.js",
+    "pilot:rules": "node pilot/7-apply-rules.js",
+    "pilot:astra": "node pilot/8-astra-websites.mjs",
+    "pilot:merge": "node pilot/9-merge-astra.js",
+    "pilot:letters": "node pilot/10-render-letters.js",
+    "pilot:rebuild": "npm run pilot:spine && npm run pilot:shortlist && npm run pilot:email && npm run pilot:rules && npm run pilot:merge && npm run pilot:letters"
   },
   "engines": {
     "node": ">=18"

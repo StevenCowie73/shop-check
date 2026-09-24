@@ -34,3 +34,7 @@ finder/.env
 finder/out/
 # hand-checked facts about real businesses; the example file is committed instead
 finder/overrides.json
+
+# The pilot works on real licence-register data: names, addresses,
+# phone numbers, email addresses, and the letters built from them.
+finder/pilot/out/
