@@ -7,7 +7,42 @@ cell for twenty seconds, and if they do not pick up the caller gets one text.
 |-------|----------------|--------------|
 | `/api/twilio/voice` | A Call Comes In | dials `OWNER_CELL`, caller's number as caller ID |
 | `/api/twilio/dial-status` | set by `voice`, not configured by hand | texts the caller if the dial did not complete |
-| `/api/twilio/sms` | A Message Comes In | forwards inbound texts to `OWNER_CELL` |
+| `/api/twilio/sms` | A Message Comes In | forwards inbound texts to `OWNER_CELL`; texts from `OWNER_CELL` are replies, sent on from the business number |
+
+## Texting customers from the ColdenJames number
+
+You never have to give out your own cell. Customers only ever see
+(318) 666-6445.
+
+**When a customer texts ColdenJames**, it arrives on your cell like this:
+
+> ColdenJames: new text from +1 318-555-0142: "Can you call me back about a fence repair quote?" Reply STOP to opt out.
+
+**To answer them, text ColdenJames — (318) 666-6445 — from your cell.**
+Save it in your contacts as "ColdenJames" so it is easy to find.
+
+- **Just type your reply.** It goes to whoever last texted or called
+  ColdenJames. Use this when you are answering the text you just got.
+- **To pick who it goes to, start with their number.** Any of these work:
+  `3185550142 See you at 9`, `318-555-0142 See you at 9`,
+  `(318) 555-0142 See you at 9`, `+1 318 555 0142 See you at 9`.
+  The number is taken off; they only see "See you at 9".
+- Your words go exactly as you typed them. Nothing is added.
+- If it went, you hear nothing back. If it didn't, you get one short line
+  telling you why:
+  - "Not sent: that number hasn't contacted ColdenJames." — you can only
+    text people who called or texted ColdenJames first. That is the rule
+    the texting approval depends on, so there is no way round it.
+  - "Not sent: nobody has called or texted ColdenJames yet."
+  - "Not sent: that number has replied STOP." — they have opted out.
+  - "Not sent: there was no message after the number."
+  - "Not sent: Twilio refused the message." or "…couldn't check the call
+    and text log. Try again." — try again in a minute.
+- **Careful with "last person".** If two people are in touch at once,
+  start with the number so the reply goes to the right one.
+- **Never text STOP, START or HELP to ColdenJames yourself.** Twilio acts
+  on those words for your own cell — STOP would stop ColdenJames texting
+  you. They are never passed on to a customer.
 
 ## Environment
 

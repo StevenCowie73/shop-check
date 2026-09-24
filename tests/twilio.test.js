@@ -389,31 +389,201 @@ test('TEXTING_LIVE "true" with stray whitespace still counts as on', async () =>
 
 /* ---------- sms ---------- */
 
-test('an inbound text is forwarded to the owner and gets no reply', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async sent => {
+/* A stand-in for Twilio that keeps a small call and text log for the
+   business number and answers list queries against it the way Twilio does
+   (To / From filters, newest first). Sends are recorded, never made. */
+function fakeTwilio(fn, { messages = [], calls = [], refuse = null, logsDown = false } = {}) {
+  const sent = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    const u = new URL(String(url));
+    const method = (init && init.method) || 'GET';
+    if (method === 'GET') {
+      if (logsDown) return { ok: false, status: 503, text: async () => 'down', json: async () => ({}) };
+      const q = u.searchParams;
+      const isCalls = /\/Calls\.json$/.test(u.pathname);
+      const rows = (isCalls ? calls : messages)
+        .filter(r => (!q.get('To') || r.to === q.get('To')) && (!q.get('From') || r.from === q.get('From')))
+        .slice(0, Number(q.get('PageSize') || 50));
+      return { ok: true, status: 200, json: async () => (isCalls ? { calls: rows } : { messages: rows }),
+               text: async () => '{}' };
+    }
+    const params = Object.fromEntries(new URLSearchParams(init.body));
+    if (refuse && params.To !== OWNER) {
+      return { ok: false, status: 400, json: async () => ({}),
+               text: async () => JSON.stringify({ code: refuse, message: 'refused' }) };
+    }
+    sent.push(params);
+    return { ok: true, status: 201, json: async () => ({ sid: 'SMtest' }), text: async () => '{}' };
+  };
+  return (async () => {
+    try { await fn(sent); } finally { global.fetch = realFetch; }
+  })();
+}
+
+/* 555-01XX numbers are reserved for fiction. */
+const OTHER = '+13185550142';
+const STRANGER = '+13185550177';
+const inText = (from, at) => ({ from, to: BUSINESS, direction: 'inbound', date_sent: at });
+const inCall = (from, at) => ({ from, to: BUSINESS, direction: 'inbound', start_time: at });
+const smsFrom = (from, Body, extra = {}) =>
+  fakeReq('/api/twilio/sms', { From: from, To: BUSINESS, Body, ...extra });
+
+test('an inbound text is forwarded to the owner in the campaign sample format, with no reply', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
     const res = fakeRes();
-    await routes.sms(
-      fakeReq('/api/twilio/sms', { From: CALLER, To: BUSINESS, Body: 'can you quote a roof' }), res);
-
+    await routes.sms(smsFrom(OTHER, 'Can you call me back about a fence repair quote?'), res);
     assert.strictEqual(sent.length, 1);
-    assert.strictEqual(sent[0].params.To, OWNER, 'forwards to the owner');
-    assert.strictEqual(sent[0].params.From, BUSINESS);
-    assert.strictEqual(sent[0].params.Body, 'From ' + CALLER + ': can you quote a roof');
-
+    assert.strictEqual(sent[0].To, OWNER, 'forwards to the owner');
+    assert.strictEqual(sent[0].From, BUSINESS);
+    assert.strictEqual(sent[0].Body,
+      'ColdenJames: new text from +1 318-555-0142: "Can you call me back about a fence repair quote?" Reply STOP to opt out.',
+      'exactly campaign sample 3');
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.body.includes('<Message'), false, 'no auto-reply to the sender');
     assert.match(res.body, /<Response><\/Response>/);
   }));
 });
 
-test('STOP is forwarded but never answered', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async sent => {
+test('STOP from a customer is forwarded but never answered', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
     const res = fakeRes();
-    await routes.sms(fakeReq('/api/twilio/sms', { From: CALLER, To: BUSINESS, Body: 'STOP' }), res);
+    await routes.sms(smsFrom(CALLER, 'STOP'), res);
     assert.strictEqual(sent.length, 1);
-    assert.strictEqual(sent[0].params.To, OWNER, 'only ever the owner, never the sender');
+    assert.strictEqual(sent[0].To, OWNER, 'only ever the owner, never the sender');
     assert.strictEqual(res.body.includes('<Message'), false);
   }));
+});
+
+test("the owner's own texts are never forwarded back to the owner", async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, 'On my way, 10 minutes'), fakeRes());
+    assert.strictEqual(sent.some(m => m.To === OWNER && /new text from/.test(m.Body)), false);
+    assert.strictEqual(sent.length, 1, 'one reply went out');
+    assert.strictEqual(sent[0].To, OTHER);
+  }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 10:00:00 +0000')] }));
+});
+
+test('a reply goes to whoever last texted or called, from the business number, word for word', async () => {
+  const log = {
+    messages: [inText(CALLER, 'Thu, 24 Sep 2026 09:00:00 +0000'),
+               { from: OWNER, to: BUSINESS, direction: 'inbound', date_sent: 'Thu, 24 Sep 2026 12:00:00 +0000' }],
+    calls: [inCall(OTHER, 'Thu, 24 Sep 2026 11:00:00 +0000'),
+            inCall('+266696687', 'Thu, 24 Sep 2026 11:30:00 +0000')]
+  };
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    const res = fakeRes();
+    await routes.sms(smsFrom(OWNER, '  Yes, I can come by at 9. '), res);
+    assert.deepStrictEqual(sent.map(m => [m.To, m.From, m.Body]),
+      [[OTHER, BUSINESS, 'Yes, I can come by at 9.']],
+      'to the latest caller (not the owner, not a withheld number), no prefix added');
+    assert.strictEqual(res.body.includes('<Message'), false);
+  }, log));
+});
+
+for (const [written, words] of [
+  ['3185550142 See you at 9', 'See you at 9'],
+  ['318-555-0142: See you at 9', 'See you at 9'],
+  ['(318) 555-0142 See you at 9', 'See you at 9'],
+  ['+1 318 555 0142 - See you at 9', 'See you at 9'],
+  ['1-318-555-0142 See you at 9', 'See you at 9'],
+  ['+13185550142, See you at 9', 'See you at 9']
+]) {
+  test(`a reply starting ${JSON.stringify(written.slice(0, 16))} goes to that number, minus the number`, async () => {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      await routes.sms(smsFrom(OWNER, written), fakeRes());
+      assert.deepStrictEqual(sent.map(m => [m.To, m.From, m.Body]), [[OTHER, BUSINESS, words]]);
+    }, { messages: [inText(OTHER, 'Wed, 23 Sep 2026 09:00:00 +0000'),
+                    inText(CALLER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+  });
+}
+
+test('a number that has only called, never texted, can be replied to', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, '318-555-0142 Sorry I missed you'), fakeRes());
+    assert.deepStrictEqual(sent.map(m => m.To), [OTHER]);
+  }, { calls: [inCall(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+});
+
+test('guard rail: a number that never contacted the business gets nothing, and the owner is told', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, '318-555-0177 hello there'), fakeRes());
+    assert.strictEqual(sent.some(m => m.To === STRANGER), false, 'nothing to the stranger');
+    assert.deepStrictEqual(sent.map(m => [m.To, m.Body]),
+      [[OWNER, "Not sent: that number hasn't contacted ColdenJames."]]);
+  }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+});
+
+test('guard rail: a reply naming the owner or the business number is refused', async () => {
+  for (const target of ['318-555-0101', '318-555-0103']) {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      await routes.sms(smsFrom(OWNER, target + ' hi'), fakeRes());
+      assert.deepStrictEqual(sent.map(m => [m.To, m.Body]),
+        [[OWNER, "Not sent: that number hasn't contacted ColdenJames."]], target);
+    }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+  }
+});
+
+test('nobody to reply to: the owner is told, nothing else is sent', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, 'Anyone there?'), fakeRes());
+    assert.deepStrictEqual(sent.map(m => [m.To, m.Body]),
+      [[OWNER, 'Not sent: nobody has called or texted ColdenJames yet.']]);
+  }, { messages: [{ from: OWNER, to: BUSINESS, direction: 'inbound', date_sent: 'Thu, 24 Sep 2026 09:00:00 +0000' }],
+       calls: [inCall('+266696687', 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+});
+
+test('a refused reply is reported to the owner in one line', async () => {
+  for (const [code, line] of [[21610, 'Not sent: that number has replied STOP.'],
+                              [21211, 'Not sent: Twilio refused the message.']]) {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      await routes.sms(smsFrom(OWNER, 'Still need that quote?'), fakeRes());
+      assert.deepStrictEqual(sent.map(m => [m.To, m.Body]), [[OWNER, line]], String(code));
+    }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')], refuse: code }));
+  }
+});
+
+test('if the log cannot be read, nothing goes to a customer', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, '318-555-0142 hi'), fakeRes());
+    assert.deepStrictEqual(sent.map(m => [m.To, m.Body]),
+      [[OWNER, "Not sent: couldn't check the call and text log. Try again."]]);
+  }, { logsDown: true }));
+});
+
+test('a number with nothing after it is not sent', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, '318-555-0142'), fakeRes());
+    assert.deepStrictEqual(sent.map(m => [m.To, m.Body]),
+      [[OWNER, 'Not sent: there was no message after the number.']]);
+  }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+});
+
+test('STOP, HELP and the other Twilio keywords from the owner are left to Twilio', async () => {
+  for (const word of ['STOP', 'stop', ' Help ', 'START', 'UNSUBSCRIBE']) {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      const res = fakeRes();
+      await routes.sms(smsFrom(OWNER, word), res);
+      assert.deepStrictEqual(sent, [], JSON.stringify(word) + ' is neither relayed nor answered');
+      assert.match(res.body, /<Response><\/Response>/);
+    }, { messages: [inText(OTHER, 'Thu, 24 Sep 2026 09:00:00 +0000')] }));
+  }
+});
+
+test('the forward and not-sent wording lives in lib/texting-copy.js', () => {
+  const { forwardedText, NOT_SENT } = require('../lib/texting-copy.js');
+  const { formatUS } = require('../lib/reply-through.js');
+  assert.strictEqual(forwardedText(formatUS('+13185550142'), 'hi'),
+    'ColdenJames: new text from +1 318-555-0142: "hi" Reply STOP to opt out.');
+  assert.strictEqual(NOT_SENT.notAllowed, "Not sent: that number hasn't contacted ColdenJames.");
+});
+
+test('reading a reply: ordinary messages are not mistaken for a number', () => {
+  const { parseReply } = require('../lib/reply-through.js');
+  for (const t of ['On my way, 10 mins', '1 more thing', '$250 for the job', '318555014 short',
+                   '31855501429 too long', 'See you at 9']) {
+    assert.deepStrictEqual(parseReply(t), { to: null, message: t }, t);
+  }
 });
 
 /* ---------- the guard rails ---------- */
