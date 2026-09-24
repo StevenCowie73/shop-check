@@ -49,7 +49,8 @@ function fakeRes() {
 
 function withEnv(vars, fn) {
   const saved = {};
-  const keys = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'OWNER_CELL', 'AUTO_TEXT', 'PUBLIC_BASE_URL'];
+  const keys = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'OWNER_CELL', 'AUTO_TEXT', 'PUBLIC_BASE_URL',
+                'TEXTING_LIVE'];
   for (const k of keys) { saved[k] = process.env[k]; delete process.env[k]; }
   Object.assign(process.env, vars);
   return (async () => {
@@ -64,6 +65,8 @@ function withEnv(vars, fn) {
 }
 
 const CONFIGURED = { TWILIO_ACCOUNT_SID: SID, TWILIO_AUTH_TOKEN: TOKEN, OWNER_CELL: OWNER };
+/* Texting switched on, as it will be once the carriers approve it. */
+const LIVE = { ...CONFIGURED, TEXTING_LIVE: 'true' };
 
 /* Replaces fetch and records what a route tried to send.
 
@@ -178,7 +181,7 @@ test('voice dials the owner for 20 seconds with the caller as caller id', async 
 /* ---------- dial-status ---------- */
 
 test('an answered call sends nothing and just hangs up', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async sent => {
+  await withEnv(LIVE, () => captureSends(async sent => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
@@ -191,7 +194,7 @@ test('an answered call sends nothing and just hangs up', async () => {
 
 for (const status of ['no-answer', 'busy', 'failed', 'canceled']) {
   test(`a ${status} call texts the caller once and says so`, async () => {
-    await withEnv(CONFIGURED, () => captureSends(async sent => {
+    await withEnv(LIVE, () => captureSends(async sent => {
       const res = fakeRes();
       await routes.dialStatus(
         fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: status }), res);
@@ -213,7 +216,7 @@ for (const status of ['no-answer', 'busy', 'failed', 'canceled']) {
 }
 
 test('AUTO_TEXT overrides the message', async () => {
-  await withEnv({ ...CONFIGURED, AUTO_TEXT: 'Custom wording here.' }, () => captureSends(async sent => {
+  await withEnv({ ...LIVE, AUTO_TEXT: 'Custom wording here.' }, () => captureSends(async sent => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'busy' }), res);
@@ -222,7 +225,7 @@ test('AUTO_TEXT overrides the message', async () => {
 });
 
 test('an unknown dial status is treated as a miss', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async sent => {
+  await withEnv(LIVE, () => captureSends(async sent => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'anything-else' }), res);
@@ -231,7 +234,7 @@ test('an unknown dial status is treated as a miss', async () => {
 });
 
 test('when Twilio refuses the message the caller is not promised one', async () => {
-  await withEnv(CONFIGURED, async () => {
+  await withEnv(LIVE, async () => {
     const realFetch = global.fetch;
     global.fetch = async (url, init) => {
       if (!init || (init.method || 'GET') === 'GET') {
@@ -253,7 +256,7 @@ test('when Twilio refuses the message the caller is not promised one', async () 
 /* ---------- one text per caller per day ---------- */
 
 test('a first call in 24 hours gets the text', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+  await withEnv(LIVE, () => captureSends(async (sent, looked) => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
@@ -270,7 +273,7 @@ test('a first call in 24 hours gets the text', async () => {
 });
 
 test('a second call within 24 hours gets no text, and a different line', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+  await withEnv(LIVE, () => captureSends(async (sent, looked) => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'busy' }), res);
@@ -285,7 +288,7 @@ test('a second call within 24 hours gets no text, and a different line', async (
 });
 
 test('if the lookup fails the text goes out anyway', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+  await withEnv(LIVE, () => captureSends(async (sent, looked) => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
@@ -297,12 +300,52 @@ test('if the lookup fails the text goes out anyway', async () => {
 });
 
 test('an answered call never even asks', async () => {
-  await withEnv(CONFIGURED, () => captureSends(async (sent, looked) => {
+  await withEnv(LIVE, () => captureSends(async (sent, looked) => {
     const res = fakeRes();
     await routes.dialStatus(
       fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
     assert.deepStrictEqual(looked, []);
     assert.deepStrictEqual(sent, []);
+  }));
+});
+
+/* ---------- texting switched off ---------- */
+
+for (const flag of [undefined, '', 'false', 'TRUE', '1', 'yes']) {
+  test(`with TEXTING_LIVE ${JSON.stringify(flag)} a missed call sends nothing and promises nothing`, async () => {
+    const env = flag === undefined ? CONFIGURED : { ...CONFIGURED, TEXTING_LIVE: flag };
+    await withEnv(env, () => captureSends(async (sent, looked) => {
+      const res = fakeRes();
+      await routes.dialStatus(
+        fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }), res);
+      assert.deepStrictEqual(sent, [], 'no text');
+      assert.deepStrictEqual(looked, [], 'no lookup either');
+      assert.strictEqual(res.statusCode, 200);
+      assert.match(res.body, /<Say>Sorry I missed you\. I'll call you back\.<\/Say>/);
+      assert.match(res.body, /<Hangup\/>/);
+      assert.strictEqual(res.body.includes('sent you a text'), false);
+    }));
+  });
+}
+
+test('with texting off an answered call still just hangs up', async () => {
+  await withEnv(CONFIGURED, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'completed' }), res);
+    assert.strictEqual(res.body.includes('<Say>'), false);
+    assert.match(res.body, /<Hangup\/>/);
+    assert.deepStrictEqual(sent, []);
+  }));
+});
+
+test('TEXTING_LIVE "true" with stray whitespace still counts as on', async () => {
+  await withEnv({ ...CONFIGURED, TEXTING_LIVE: ' true\n' }, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(
+      fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'busy' }), res);
+    assert.strictEqual(sent.length, 1);
+    assert.match(res.body, /just sent you a text/);
   }));
 });
 

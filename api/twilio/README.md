@@ -18,6 +18,7 @@ Set in Vercel, for Production and Preview:
 | `TWILIO_ACCOUNT_SID` | account SID, starts `AC` |
 | `TWILIO_AUTH_TOKEN` | auth token — also what every signature is checked against |
 | `OWNER_CELL` | the cell to ring and forward to, E.164, e.g. `+1XXXXXXXXXX` |
+| `TEXTING_LIVE` | `true` to send the missed-call text. Anything else, or unset: no text, and the caller hears "I'll call you back" instead. Leave it off until the texting campaign is approved |
 | `AUTO_TEXT` | optional: replaces the wording of the missed-call text |
 | `PUBLIC_BASE_URL` | optional: only if a proxy rewrites the host and signatures start failing |
 

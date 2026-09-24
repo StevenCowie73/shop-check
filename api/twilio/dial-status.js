@@ -31,6 +31,16 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  /* Until the carriers approve the texting campaign they drop our texts
+     after Twilio has accepted them, so the send "succeeds" and nothing
+     arrives. Telling a caller a text is on its way would then be untrue.
+     Texting stays off unless TEXTING_LIVE is "true" (surrounding spaces
+     ignored; "TRUE", "1" or "yes" do not count). */
+  if (String(process.env.TEXTING_LIVE || '').trim() !== 'true') {
+    twiml(res, "<Say>Sorry I missed you. I'll call you back.</Say><Hangup/>");
+    return;
+  }
+
   /* The caller of this call, and nobody else. Not a request parameter we
      were handed to text — the From of the call Twilio just signed for us. */
   const caller = params.From;
