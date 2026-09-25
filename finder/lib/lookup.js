@@ -204,6 +204,8 @@ async function lookupOne(query, opts) {
       whatsWrong: audit.whatsWrong,
       loads: audit.loads,
       skipped: audit.skipped,
+      /* the site refused an automated visit: unknown, not broken */
+      blocked: !!audit.blocked,
       problem: audit.problem || null,
       status: audit.status,
       title: audit.title || null,

@@ -154,6 +154,12 @@ so it stays out of the repository like everything else in `out/`. Copy
 
 - **`unknown` is not a polite word for bad.** A site whose robots.txt told us
   to stay away was never looked at. It produces no finding and no claim.
+- **A blocked check is unknown, not broken.** A 401, 403 or 429, a "202
+  Accepted" homepage, or a bot-challenge page ("Just a moment…", "checking
+  your browser") means the site refused an automated visitor, not that it
+  is down. It gets no score and no claim. Broken means a real failure: the
+  domain gone, the connection refused, a 5xx that is not a challenge, a
+  missing homepage, or a parked domain.
 - **A parked domain is not a bad website, it is no website.** Complaining that
   a holding page "isn't built for phones" is a fact about the placeholder.
 - **A free-provider email is a usable email.** A gmail address is the one the

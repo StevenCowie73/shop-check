@@ -242,7 +242,52 @@ function sentence(signals) {
 
 const mb = b => (b / (1024 * 1024)).toFixed(1) + ' MB';
 
-/* ---------- one site ---------- */
+/* ---------- blocked checks ---------- */
+
+/* A site that refuses an automated visitor has told us nothing about what a
+   customer sees. A 401, 403 or 429, a "202 Accepted" homepage, or a
+   bot-challenge page ("Just a moment…", "checking your browser") is a
+   blocked check: the site is UNKNOWN, never broken. Recording it as "does
+   not load" once put a live, working site into a letter as one that "comes
+   back with an error". Only a real failure — the domain gone, the
+   connection refused, a 5xx that is not a challenge, a missing homepage, a
+   parked domain — counts as broken. */
+const BLOCKED_STATUS = new Set([401, 403, 429]);
+const BLOCKED_NOTE = 'unknown — the site blocked the check';
+const BLOCKED_PROBLEM = "couldn't check — the site blocks automated visits";
+
+/* Markers that only a challenge or bot wall puts on a page. */
+const CHALLENGE_STRONG = [
+  '/cdn-cgi/challenge-platform/', 'cf_chl_', 'cf-chl-', 'challenges.cloudflare.com',
+  'captcha-delivery.com', '_incapsula_resource', 'px-captcha', 'sgcaptcha',
+  'imunify360', 'bot-protection', '__ddg', 'ddos-guard'
+];
+/* Phrases a real page could conceivably contain, so they only count on a
+   page with almost no other text — which is what a challenge page is. */
+const CHALLENGE_WEAK = [
+  'just a moment', 'checking your browser', 'attention required', 'verify you are human',
+  'verifying you are human', 'are you a robot', 'enable javascript and cookies to continue',
+  'please wait while your request is being verified', 'ddos protection by',
+  'request unsuccessful', 'access denied', 'bot verification', 'security check'
+];
+
+function isBotChallenge(html, status, headers) {
+  const h = headers && typeof headers.get === 'function' ? headers : { get: () => null };
+  if (String(h.get('cf-mitigated') || '').toLowerCase() === 'challenge') return true;
+  if (status === 202) return true;
+  const lower = String(html || '').toLowerCase();
+  if (CHALLENGE_STRONG.some(m => lower.includes(m))) return true;
+  const text = stripTags(html).replace(/\s+/g, ' ').trim();
+  return text.length < 600 && CHALLENGE_WEAK.some(m => text.toLowerCase().includes(m));
+}
+
+function blockedRecord(record, extra) {
+  return Object.assign(record, {
+    loads: null, skipped: true, blocked: true,
+    problem: BLOCKED_PROBLEM, skipNote: BLOCKED_NOTE,
+    title: '', viewport: false, phoneOnPage: false, newestYear: null, deadTech: [], bytes: 0
+  }, extra);
+}
 
 /* ---------- one site ---------- */
 const robotsCache = new Map();
@@ -341,6 +386,9 @@ async function checkSite(row) {
 
   if (!res.ok) {
     const body = await readCapped(res, 64 * 1024).catch(() => ({ bytes: 0 }));
+    if (BLOCKED_STATUS.has(res.status) || isBotChallenge(body.text, res.status, res.headers)) {
+      return blockedRecord(record, { finalUrl, finalScheme, status: res.status });
+    }
     return Object.assign(record, {
       loads: false, skipped: false, problem: 'the server answered ' + res.status,
       finalUrl, finalScheme, status: res.status, title: '', viewport: false,
@@ -351,6 +399,11 @@ async function checkSite(row) {
   const body = await readCapped(res, AUDIT.maxBytes);
   const html = body.text;
   const text = stripTags(html);
+
+  /* A 200 or 202 can still be a wall, not the site. */
+  if (isBotChallenge(html, res.status, res.headers)) {
+    return blockedRecord(record, { finalUrl, finalScheme, status: res.status });
+  }
 
   return Object.assign(record, {
     loads: true,
@@ -392,6 +445,9 @@ async function fetchSiteText(website) {
 
   try {
     const page = await getText(url.href, AUDIT.timeoutMs, AUDIT.userAgent);
+    if (BLOCKED_STATUS.has(page.status) || isBotChallenge(page.body, page.status, null)) {
+      return { text: '', note: BLOCKED_PROBLEM };
+    }
     if (page.status >= 400) return { text: '', note: `the server answered ${page.status}` };
     const text = stripTags(page.body).replace(/\s+/g, ' ').trim();
     return { text: text.slice(0, SITE_TEXT_CHARS), note: text ? '' : 'the page had no readable text' };
@@ -405,5 +461,6 @@ module.exports = {
   AUDIT, WEIGHTS, SITE_TEXT_CHARS,
   parseRobots, robotsVerdict, matchesRobotsPath,
   stripTags, hasViewport, pageTitle, findsPhone, newestYear, deadTech, isParked,
-  isNotTheirOwnSite, scoreSite, robotsFor, checkSite, fetchSiteText
+  isNotTheirOwnSite, scoreSite, robotsFor, checkSite, fetchSiteText,
+  isBotChallenge, BLOCKED_STATUS, BLOCKED_NOTE, BLOCKED_PROBLEM
 };

@@ -97,7 +97,7 @@ async function main() {
       signals: scored.signals,
       whatsWrong: scored.whatsWrong
     }));
-    const flag = found.skipped ? 'skipped' : (found.loads ? 'ok' : 'dead');
+    const flag = found.blocked ? 'blocked' : found.skipped ? 'skipped' : (found.loads ? 'ok' : 'dead');
     const shown = scored.score === null ? '?' : String(scored.score);
     console.log(`${String(i + 1).padStart(4)}/${sites.length}  ${shown.padStart(3)}  ${flag.padEnd(7)}  ${row.website.slice(0, 60)}`);
     if (i < sites.length - 1) await sleep(AUDIT.delayMs);
@@ -119,6 +119,7 @@ async function main() {
       loaded: results.filter(r => r.loads).length,
       dead: results.filter(r => !r.loads && !r.skipped).length,
       skipped: results.filter(r => r.skipped).length,
+      blocked: results.filter(r => r.blocked).length,
       unscored: results.filter(r => r.siteScore === null).length,
       httpOnly: results.filter(r => r.loads && r.finalScheme === 'http:').length,
       noViewport: results.filter(r => r.loads && !r.viewport).length,
@@ -134,7 +135,9 @@ async function main() {
   console.log(`Sites checked:        ${results.length}`);
   console.log(`Loaded fine:          ${results.filter(r => r.loads).length}`);
   console.log(`Did not load:         ${dead}`);
-  console.log(`Not checked (robots): ${skipped}`);
+  const blocked = results.filter(r => r.blocked).length;
+  console.log(`Not checked (robots.txt): ${skipped - blocked}`);
+  console.log(`Not checked (the site blocked the check): ${blocked}`);
   console.log(`Still plain http:     ${results.filter(r => r.loads && r.finalScheme === 'http:').length}`);
   console.log(`No mobile viewport:   ${results.filter(r => r.loads && !r.viewport).length}`);
   console.log(`No phone on the page: ${results.filter(r => r.loads && !r.phoneOnPage).length}`);

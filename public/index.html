@@ -302,7 +302,9 @@ function renderFound(r) {
     auditNode.appendChild(rows([
       ["Score", a.siteScore === null ? "not checked" : a.siteScore + " / 100"],
       ["What's wrong", a.whatsWrong || ""],
-      ["Loaded", a.skipped
+      ["Loaded", a.blocked
+        ? "couldn't check — the site blocks automated visits"
+        : a.skipped
         ? "not checked" + (a.problem ? " — " + a.problem : "")
         : (a.loads ? "yes" + (a.status ? " (HTTP " + a.status + ")" : "") : "no" + (a.problem ? " — " + a.problem : ""))],
       ["Built for phones", a.loads ? (a.viewport ? "yes" : "no") : undefined],
