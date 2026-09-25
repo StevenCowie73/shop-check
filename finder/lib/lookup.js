@@ -7,12 +7,17 @@
    scripts call, so what the iPad shows and what judgments.csv says cannot
    disagree.
 
-   It writes nothing. No cache, no files, no prospect data at rest. */
+   It writes nothing. No cache, no files, no prospect data at rest.
+
+   Google's listing is for Steven's eyes only. It fills the card, and it is
+   never part of what the model reads: the judgment record below is built
+   from what Steven typed, our own website check and the homepage text,
+   with any Google content on that page cut out. */
 
 const places = require('./places.js');
 const { scoreBusiness, shopCheckLink } = require('./prospect.js');
-const { checkSite, scoreSite, fetchSiteText } = require('./site-audit.js');
-const { JUDGE, buildInput, reviewLines, ownerReplies, loadSdk, judgeRecord } = require('./judge.js');
+const siteAudit = require('./site-audit.js');
+const { JUDGE, buildInput, stripGoogleContent, loadSdk, judgeRecord } = require('./judge.js');
 
 /* The search only needs enough to identify a business; details fills the
    rest in. Keeping this mask small keeps the search on the cheaper tier. */
@@ -35,7 +40,7 @@ const STEPS = [
   { key: 'search', label: 'finding the business' },
   { key: 'listing', label: 'reading the listing' },
   { key: 'website', label: 'checking the website' },
-  { key: 'reviews', label: 'reading reviews' }
+  { key: 'judgment', label: 'judging' }
 ];
 
 function costOf({ searches, details, inputTokens, outputTokens }) {
@@ -61,6 +66,10 @@ const orUnknown = v => (v === null || v === undefined || v === '' ? UNKNOWN : v)
 
 async function lookupOne(query, opts) {
   const { placesKey, anthropicKey, placeId = null, onProgress = () => {} } = opts;
+  /* Tests swap these for stubs; nothing else passes them. */
+  const deps = opts.deps || {};
+  const P = deps.places || places;
+  const { checkSite, scoreSite, fetchSiteText } = deps.siteAudit || siteAudit;
   const say = (key, label) => onProgress({ step: key, label, steps: STEPS });
   let searches = 0, details = 0;
   let hits = [];
@@ -72,7 +81,7 @@ async function lookupOne(query, opts) {
     hits = [{ id: placeId }];
   } else {
     say('search', 'finding the business');
-    const found = await places.searchText(placesKey, {
+    const found = await P.searchText(placesKey, {
       textQuery: query,
       pageSize: 5,
       fieldMask: LOOKUP_SEARCH_FIELDS,
@@ -115,7 +124,7 @@ async function lookupOne(query, opts) {
 
   /* ---- 2. read the listing ---- */
   say('listing', 'reading the listing');
-  const d = await places.placeDetails(placesKey, pick.id);
+  const d = await P.placeDetails(placesKey, pick.id);
   details++;
 
   const name = (d.displayName && d.displayName.text) || (pick.displayName && pick.displayName.text) || '';
@@ -160,22 +169,21 @@ async function lookupOne(query, opts) {
       whatsWrong: sited.whatsWrong
     });
     const st = await fetchSiteText(website);
-    siteText = st.text;
+    siteText = stripGoogleContent(st.text, d);
     siteTextNote = st.note;
   }
 
   /* ---- 4. the judgment ---- */
-  say('reviews', 'reading reviews');
+  say('judgment', 'judging');
+  /* First-party only. No field here comes from the Places response: not
+     the name, phone, address, rating, reviews or hours, and not the
+     website address either — only whether we found one, and what our own
+     check of it saw. */
   const record = {
     placeId: pick.id,
-    prospect: {
-      name, phone: listing.phone, website,
-      trade: d.primaryType || '',
-      why: scored.why,
-      prospectScore: scored.score
-    },
-    audit,
-    details: d,
+    query,
+    hasWebsite: !!website,
+    audit: audit ? { siteScore: audit.siteScore, skipped: audit.skipped, whatsWrong: audit.whatsWrong, title: audit.title } : null,
     siteText,
     siteTextNote
   };
@@ -183,7 +191,7 @@ async function lookupOne(query, opts) {
   let judgment = null, judgeError = null;
   if (anthropicKey) {
     try {
-      const Anthropic = loadSdk();
+      const Anthropic = deps.Anthropic || loadSdk();
       const client = new Anthropic({ apiKey: anthropicKey, maxRetries: 3 });
       judgment = await judgeRecord(client, Anthropic, record);
     } catch (err) {
@@ -219,9 +227,8 @@ async function lookupOne(query, opts) {
     judgment,
     judgeError,
     evidence: {
-      reviewsRead: reviewLines(d),
-      ownerReplies: ownerReplies(d),
-      ownerRepliesAvailable: false,   /* Places API (New) does not return them */
+      /* Google's listing is shown, never sent to the model */
+      googleSentToModel: false,
       siteTextChars: siteText.length,
       siteTextNote,
       promptSent: buildInput(record)

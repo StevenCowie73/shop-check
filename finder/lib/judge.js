@@ -4,8 +4,12 @@
    what is actually in front of it. Moved out of judge-prospects.js so the
    single-business lookup asks exactly the question the batch run asks.
 
-   Nothing here touches the filesystem — the batch script owns its cache,
-   and the lookup endpoint has nowhere to write anyway. */
+   Nothing here touches the filesystem, and nothing from Google reaches the
+   model. Google's listing is shown to Steven on the card, live and with
+   attribution; it is never part of what Claude is asked to read. The model
+   sees only first-party material: what Steven typed, our own check of the
+   business's website, and the text on that website. buildInput is the only
+   door, and it does not read the Places response at all. */
 
 const { sleep } = require('./env.js');
 
@@ -20,7 +24,6 @@ const JUDGE = {
   previewCount: 10,          /* how many to do before stopping for confirmation */
 
   siteTextChars: 6000,       /* how much homepage text to send */
-  reviewsPerBusiness: 5,     /* Places returns at most 5 */
   fetchTimeoutMs: 10000,
   fetchDelayMs: 1200,        /* between homepage fetches */
   userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -40,39 +43,33 @@ const JUDGE = {
 /* The judging prompt. Everything it is allowed to say comes from the
    input; there is nothing here inviting it to fill gaps. */
 const SYSTEM_PROMPT = `You are helping a one-person web services business decide which small trade
-businesses are worth a cold call. You are given what is publicly on a business's Google
-listing and, when they have one, the text of their website.
+businesses are worth a cold call. You are given the name the caller typed, the result of our
+own check of the business's website, and, when there is one, the text of that website. You
+are not given anything from Google or any review site, so you cannot know how the business
+is rated, how many reviews it has, or what customers said. Do not guess at any of that.
 
 Rules, in order of importance:
 
 1. Use only what is in the input. Never state a fact that is not there. If the input does
    not settle a field, answer "unknown" or null rather than guessing. An inferred fact is
    still a guess.
-2. Quote reviews only in short fragments, at most a dozen words, copied exactly.
-3. Everything you write may be read aloud to the business owner. Write nothing that would
+2. Everything you write may be read aloud to the business owner. Write nothing that would
    embarrass the caller: no mockery, no speculation about their competence or finances, no
    sales patter, no flattery, no exclamation marks.
-4. one_line is a plain spoken opening sentence, the kind one person says to another on the
+3. one_line is a plain spoken opening sentence, the kind one person says to another on the
    phone. It should sound like somebody local who looked them up, not somebody working
    through a list. It must be specific to this business and grounded in the input. No pitch,
    no "I noticed you might be losing customers", no questions designed to corner them.
-
-5. one_line leads with the strongest evidence you actually have, in this order:
-   a. A responsiveness problem a customer described. Speak to the customer's experience
-      itself - somebody could not get a call back, somebody was waiting - not to the review
-      as a review. Never say "a reviewer said" or "your reviews mention".
-   b. Reviews being thin or old: only a handful, or nothing recent.
-   c. The website: missing, or the specific thing wrong with it.
-   Only lead with the website when there is genuinely nothing above it. Leading with a
-   missing website when you had something better is the wrong answer.
-
-6. When the evidence is thin and verdict_score is low, say so plainly instead of
-   manufacturing a hook. "I could not find much about you online beyond the listing" is a
-   better opener than a reason invented to have something to say.
+4. one_line leads with the most specific thing the website check or the website itself
+   shows: no website found, the specific thing wrong with it, or something concrete on it.
+   Never mention reviews, ratings or anything a customer said.
+5. When the evidence is thin and verdict_score is low, say so plainly instead of
+   manufacturing a hook. "I could not find much about you online" is a better opener than a
+   reason invented to have something to say.
 
 Scoring verdict_score, 0-100, is how likely this business is to actually buy:
-  - Small homeowner-facing operations showing signs they are missing calls or slow to reply
-    are the best fit. Score them high.
+  - Small homeowner-facing operations with no website, or a website that does not work on
+    a phone, are the best fit. Score them high.
   - Established firms whose customers are other contractors or businesses are the worst fit,
     however bad their web presence looks. Score them low.
   - Too little evidence means a middling score, not a high one.`;
@@ -87,94 +84,74 @@ const JUDGMENT_TOOL = {
       size: { type: 'string', enum: ['solo', 'small crew', 'established firm', 'unknown'] },
       size_evidence: { type: 'string', description: 'The evidence that decided size. The single word unknown if there is none.' },
       customer: { type: 'string', enum: ['homeowners', 'businesses/contractors', 'both', 'unknown'] },
-      owner_name: { type: 'string', description: "The owner's name if it appears anywhere in the input. The single word unknown if it does not." },
-      responsiveness_signals: {
-        type: 'array',
-        description: 'Review fragments suggesting missed calls, slow callbacks, unanswered messages or no-shows. Empty if there are none.',
-        items: {
-          type: 'object',
-          properties: {
-            quote: { type: 'string', description: 'A short fragment copied exactly from the review.' },
-            kind: { type: 'string', enum: ['missed call', 'slow callback', 'unanswered message', 'no-show', 'other'] }
-          },
-          required: ['quote', 'kind'],
-          additionalProperties: false
-        }
-      },
-      reputation: { type: 'string', enum: ['strong', 'mixed', 'weak', 'too few reviews'] },
-      best_pitch: { type: 'string', enum: ['missed calls', 'reviews', 'website', 'multiple', 'skip'] },
+      owner_name: { type: 'string', description: "The owner's name if it appears on their website text. The single word unknown if it does not." },
+      best_pitch: { type: 'string', enum: ['missed calls', 'website', 'multiple', 'skip'] },
       /* A strict tool schema rejects minimum/maximum, so the range lives in
          the description and the value is clamped when it comes back. */
       verdict_score: { type: 'integer', description: 'How likely this business is to actually buy, from 0 to 100.' },
       one_line: { type: 'string', description: 'One plain spoken sentence to open a phone call with.' },
       reasoning: { type: 'string', description: 'Two sentences at most.' }
     },
-    required: ['size', 'size_evidence', 'customer', 'owner_name', 'responsiveness_signals',
-               'reputation', 'best_pitch', 'verdict_score', 'one_line', 'reasoning'],
+    required: ['size', 'size_evidence', 'customer', 'owner_name',
+               'best_pitch', 'verdict_score', 'one_line', 'reasoning'],
     additionalProperties: false
   }
 };
 
 
 /* ---------- what Claude is shown ---------- */
-function reviewLines(details) {
-  const reviews = (details && details.reviews) || [];
-  return reviews.slice(0, JUDGE.reviewsPerBusiness).map(r => ({
-    rating: r.rating,
-    when: r.relativePublishTimeDescription || r.publishTime || '',
-    author: (r.authorAttribution && r.authorAttribution.displayName) || '',
-    text: (r.originalText && r.originalText.text) || (r.text && r.text.text) || ''
-  })).filter(r => r.text);
-}
 
-/* The Places API (New) does not return the owner's replies to reviews.
-   If a field ever appears, it gets picked up here rather than silently. */
-function ownerReplies(details) {
-  const out = [];
-  for (const r of (details && details.reviews) || []) {
-    const reply = r.reply || r.ownerResponse || r.authorReply;
-    const text = reply && (reply.text && reply.text.text || reply.text);
-    if (text) out.push({ to: (r.originalText && r.originalText.text || '').slice(0, 80), text });
+/* Judgment fields that used to come from Google reviews. The model is no
+   longer shown reviews, so these are never assessed; the card says so
+   rather than leaving a gap that looks like "none found". */
+const NOT_ASSESSED = Object.freeze(['reputation', 'responsiveness_signals']);
+
+/* Google content that can turn up on a business's own homepage — an
+   embedded reviews widget, or hours copied from the listing. It is still
+   Google's, so it is cut out of the homepage text before the model sees
+   it. Matching is on whole review sentences, reviewer names and hours
+   lines; the business's own name, phone and address are left alone, since
+   those are theirs to publish. */
+function stripGoogleContent(text, details) {
+  let out = String(text || '');
+  if (!out || !details) return out;
+  const cut = [];
+  for (const r of details.reviews || []) {
+    for (const t of [r.text && r.text.text, r.originalText && r.originalText.text]) {
+      if (!t) continue;
+      cut.push(t);
+      for (const sentence of String(t).split(/(?<=[.!?])\s+|\n+/)) if (sentence.trim().length >= 20) cut.push(sentence.trim());
+    }
+    const who = r.authorAttribution && r.authorAttribution.displayName;
+    if (who && who.trim().length >= 4) cut.push(who.trim());
   }
+  for (const h of (details.regularOpeningHours && details.regularOpeningHours.weekdayDescriptions) || []) cut.push(h);
+  for (const h of (details.currentOpeningHours && details.currentOpeningHours.weekdayDescriptions) || []) cut.push(h);
+  if (details.editorialSummary && details.editorialSummary.text) cut.push(details.editorialSummary.text);
+  cut.sort((a, b) => b.length - a.length);
+  for (const c of cut) out = out.split(c).join('[removed: Google content]');
   return out;
 }
 
+/* The whole of what the model reads. It takes named first-party fields
+   only; a Places response handed to it by mistake is ignored, because
+   nothing here reads record.details or record.listing. */
 function buildInput(record) {
-  const d = record.details || {};
   const a = record.audit;
-  const reviews = reviewLines(d);
-  const replies = ownerReplies(d);
   const lines = [];
-  lines.push(`Name: ${record.prospect.name}`);
-  lines.push(`Trade as Google lists it: ${d.primaryTypeDisplayName && d.primaryTypeDisplayName.text || record.prospect.trade || 'unknown'}`);
-  lines.push(`Business status: ${d.businessStatus || 'unknown'}`);
-  lines.push(`Rating: ${d.rating != null ? d.rating : 'none'} from ${d.userRatingCount != null ? d.userRatingCount : 0} reviews`);
-  if (d.priceLevel) lines.push(`Price level: ${d.priceLevel}`);
-  if (d.editorialSummary && d.editorialSummary.text) lines.push(`Google's summary: ${d.editorialSummary.text}`);
-  if (d.regularOpeningHours && d.regularOpeningHours.weekdayDescriptions) {
-    lines.push(`Opening hours: ${d.regularOpeningHours.weekdayDescriptions.join('; ')}`);
-  }
-  lines.push(`What the finder flagged: ${record.prospect.why || 'nothing'}`);
-
-  lines.push('');
-  if (reviews.length) {
-    lines.push(`Reviews (${reviews.length} of ${d.userRatingCount || reviews.length}):`);
-    for (const r of reviews) lines.push(`- ${r.rating} stars, ${r.when}, ${r.author}: ${r.text}`);
-  } else {
-    lines.push('Reviews: none returned.');
-  }
-
-  lines.push('');
-  if (replies.length) {
-    lines.push('Owner replies to reviews:');
-    for (const r of replies) lines.push(`- ${r.text}`);
-  } else {
-    lines.push('Owner replies to reviews: not available from this source.');
+  lines.push(`Business, as the caller typed it: ${record.query || 'unknown'}`);
+  if (record.licence) {
+    const l = record.licence;
+    lines.push('From the Louisiana contractor licensing board:');
+    if (l.company) lines.push(`- licensed name: ${l.company}`);
+    if (l.types && l.types.length) lines.push(`- licence: ${l.types.join(', ')}`);
+    if (l.firstIssued) lines.push(`- first issued: ${l.firstIssued}`);
+    if (l.city) lines.push(`- mailing town: ${l.city}`);
   }
 
   lines.push('');
   if (a) {
-    lines.push(`Website audit: ${a.website}`);
+    lines.push('Our check of their website:');
     /* A site we were not allowed to fetch has no score. Say so plainly so
        the judgment cannot read a missing number as a bad one. */
     if (a.siteScore === null || a.skipped) {
@@ -183,10 +160,10 @@ function buildInput(record) {
       lines.push(`- needs-replacing score ${a.siteScore} out of 100: ${a.whatsWrong || 'nothing recorded'}`);
     }
     if (a.title) lines.push(`- page title: ${a.title}`);
-  } else if (record.prospect.website) {
-    lines.push(`Website: ${record.prospect.website} (not audited)`);
+  } else if (record.hasWebsite) {
+    lines.push('Website: found but not checked.');
   } else {
-    lines.push('Website: none listed.');
+    lines.push('Website: we found none.');
   }
 
   lines.push('');
@@ -213,7 +190,6 @@ function leaked(judgment) {
   check('size_evidence', judgment.size_evidence);
   check('one_line', judgment.one_line);
   check('reasoning', judgment.reasoning);
-  for (const s of judgment.responsiveness_signals || []) check('responsiveness_signals', s.quote);
   return bad;
 }
 
@@ -229,7 +205,7 @@ function loadSdk() {
   catch (e) {
     throw new Error(
       'The Anthropic SDK is not installed. From finder/, run:  npm install\n' +
-      '(judge-prospects.js is the only part of finder/ with a dependency.)'
+      '(the Signal lookup is the only part of finder/ that calls a model.)'
     );
   }
 }
@@ -263,6 +239,9 @@ async function judgeRecord(client, Anthropic, record) {
         model: JUDGE.model,
         usage: { input: res.usage.input_tokens, output: res.usage.output_tokens },
         ...call.input,
+        /* never shown reviews, so never assessed */
+        reputation: 'not assessed',
+        responsiveness_signals: null,
         /* the schema asks for the word "unknown"; null is what we store */
         owner_name: orNull(call.input.owner_name),
         size_evidence: orNull(call.input.size_evidence) || '',
@@ -300,7 +279,7 @@ async function pool(items, limit, worker) {
 /* ---------- output ---------- */
 
 module.exports = {
-  JUDGE, SYSTEM_PROMPT, JUDGMENT_TOOL,
-  reviewLines, ownerReplies, buildInput,
+  JUDGE, SYSTEM_PROMPT, JUDGMENT_TOOL, NOT_ASSESSED,
+  stripGoogleContent, buildInput,
   leaked, orNull, loadSdk, judgeRecord, pool
 };

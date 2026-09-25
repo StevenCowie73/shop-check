@@ -53,24 +53,18 @@ function formatPlain(r) {
     out.push(`  Size:           ${show(j.size)}${j.size_evidence ? ' — ' + j.size_evidence : ''}`);
     out.push(`  Customers:      ${show(j.customer)}`);
     out.push(`  Owner:          ${j.owner_name === null ? UNKNOWN : j.owner_name}`);
-    out.push(`  Reputation:     ${show(j.reputation)}`);
+    out.push(`  Reputation:     not assessed`);
     out.push(`  Best pitch:     ${show(j.best_pitch)}`);
     out.push('');
     out.push(`  Opening line:   ${show(j.one_line)}`);
     out.push(`  Reasoning:      ${show(j.reasoning)}`);
     out.push('');
-    if (j.responsiveness_signals && j.responsiveness_signals.length) {
-      out.push('  Responsiveness signals, quoted from reviews:');
-      for (const s of j.responsiveness_signals) out.push(`    [${s.kind}] "${s.quote}"`);
-    } else {
-      out.push('  Responsiveness signals: none found in the reviews read.');
-    }
+    out.push('  Signs of missed calls in reviews: not assessed — reviews are not sent to the model.');
   }
 
   out.push('');
   out.push('EVIDENCE');
-  out.push(`  Reviews read:   ${r.evidence.reviewsRead.length}`);
-  out.push(`  Owner replies:  not available from the Places API`);
+  out.push(`  Sent to model:  what was typed, our website check, homepage text — nothing from Google`);
   out.push(`  Homepage text:  ${r.evidence.siteTextChars ? r.evidence.siteTextChars + ' characters read' : r.evidence.siteTextNote}`);
   out.push('');
   out.push(`  Google listing: ${L.googleMapsUrl}`);

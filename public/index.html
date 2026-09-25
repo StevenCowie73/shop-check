@@ -323,30 +323,23 @@ function renderFound(r) {
       ["Evidence", j.size_evidence],
       ["Customers", j.customer],
       ["Owner", j.owner_name],
-      ["Reputation", j.reputation],
+      ["Reputation", "not assessed"],
       ["Best pitch", j.best_pitch]
     ]));
     jn.appendChild(el("h3", { text: "What to open with" }));
     jn.appendChild(el("p", { class: "opener", text: j.one_line }));
     jn.appendChild(el("p", { class: "ev", text: j.reasoning }));
 
-    jn.appendChild(el("h3", { text: "Why — quoted from their reviews" }));
-    if (j.responsiveness_signals && j.responsiveness_signals.length) {
-      for (const s of j.responsiveness_signals) {
-        jn.appendChild(el("p", { class: "quote" }, [
-          el("em", { text: s.kind }), '"' + s.quote + '"'
-        ]));
-      }
-    } else {
-      jn.appendChild(el("p", { class: "ev", text: "No responsiveness problems appear in the reviews that were read." }));
-    }
+    /* The model is never shown Google's listing or reviews, so anything
+       that rested on them is not assessed — not "none found". */
+    jn.appendChild(el("h3", { text: "Signs of missed calls in reviews" }));
+    jn.appendChild(el("p", { class: "ev", text: "Not assessed — reviews are not sent to the model. Read them on the Google listing." }));
   }
   card.appendChild(section("The judgment", jn));
 
   const ev = el("div");
   ev.appendChild(rows([
-    ["Reviews read", String(r.evidence.reviewsRead.length)],
-    ["Owner replies", document.createTextNode("not available from the Places API")],
+    ["Sent to the model", "what you typed, our website check and their homepage text — nothing from Google"],
     ["Homepage text", r.evidence.siteTextChars
       ? r.evidence.siteTextChars + " characters read"
       : (r.evidence.siteTextNote || "none")]

@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 
+/* RETIRED. This script fed each business's Google listing — rating,
+   reviews, hours — to Claude to judge it. Google Maps content must not be
+   sent to any model, and the acquisition spec retires this batch judgment,
+   so it refuses to run. The code below is kept for the record only.
+   The single-business Signal lookup still judges, on first-party data
+   only: see finder/lib/judge.js. */
+console.error('judge-prospects.js is retired: it sent Google Maps content (reviews, ratings, hours) to a model, ' +
+  'which is not allowed. Nothing was run. Use the Signal lookup, which judges on first-party data only.');
+process.exit(1);
+
 /* ---------------------------------------------------------------------
    Reads out/prospects.csv and out/site-audit.json, gathers more depth on
    each business from the Places API (reviews and the fields the finder

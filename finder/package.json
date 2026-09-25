@@ -8,7 +8,6 @@
     "find": "node find-prospects.js",
     "calls": "node make-call-list.js",
     "sites": "node check-sites.js",
-    "judge": "node judge-prospects.js",
     "pilot:walk": "node pilot/1-walk-lslbc.js",
     "pilot:parse": "node pilot/2-parse-records.js",
     "pilot:candidates": "node pilot/3-website-candidates.js",

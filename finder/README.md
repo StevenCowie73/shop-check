@@ -16,8 +16,9 @@ It only builds a list.
 
 Run `npm install` at the repo root before anything else. `undici` is needed
 whenever the machine reaches the internet through a proxy (see **Behind a
-proxy** below), and `judge-prospects.js` and the Signal lookup also need the
-Anthropic SDK.
+proxy** below), and the Signal lookup also needs the Anthropic SDK.
+`judge-prospects.js` is retired and refuses to run: it sent Google Maps
+content to a model. The lookup's judgment sees first-party data only.
 
 The parts all four share — scoring, the website audit, the judgment prompt —
 live in `finder/lib/`. Edit them there, not in the scripts.
