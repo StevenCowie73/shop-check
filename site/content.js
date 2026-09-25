@@ -117,7 +117,10 @@ const HOME = {
 const GOOGLE_PRIVACY = 'https://policies.google.com/privacy';
 const GOOGLE_MAPS_TERMS = 'https://maps.google.com/help/terms_maps/';
 
-const DRAFT_NOTE = 'Plain-English draft — to be reviewed.';
+/* The date the privacy policy and terms were last brought into line with
+   what the system does. Shown under each title. The /sms page keeps its
+   own date (UPDATED above). */
+const LEGAL_UPDATED = 'September 25, 2026';
 
 /* The sentence below is required word for word by the mobile carriers who
    approve business texting. Do not reword it. */
@@ -126,31 +129,81 @@ const CARRIER_SENTENCE =
   'for marketing or promotional purposes. Text messaging originator opt-in ' +
   'data and consent will not be shared with any third parties.';
 
+const WHO_WE_ARE =
+  BUSINESS.brand + ' is a trade name of ' + BUSINESS.legal + ', a Louisiana ' +
+  'company run by ' + BUSINESS.owner + ' in ' + BUSINESS.city + '. Email ' +
+  BUSINESS.email + ' or call or text ' + PHONE + '.';
+
 const PRIVACY = {
   title: 'Privacy Policy',
   intro:
-    'This explains what ColdenJames collects, why, and what we do not do ' +
-    'with it. If anything here is unclear, email ' + BUSINESS.email + ' and ' +
-    'ask. It is a short policy because we collect very little.',
+    'This explains what ColdenJames collects, where it comes from, why, and ' +
+    'what we do not do with it. If anything here is unclear, email ' +
+    BUSINESS.email + ' and ask.',
   sections: [
     {
-      heading: 'What we collect',
+      heading: 'Who we are',
+      paragraphs: [WHO_WE_ARE]
+    },
+    {
+      heading: 'People who call or text our number',
       paragraphs: [
-        'From a business that hires us: the contact details you give us — ' +
-        'your name, your business name, your phone number, your email ' +
-        'address, and the address we send post to. You gave them to us on ' +
-        'purpose and we use them to run your service and to talk to you.',
-
-        'From people who call or text your business number: their phone ' +
-        'number, and the content of texts they send. This is how the service ' +
-        'works — we cannot text someone back without knowing their number. ' +
-        'We pass their messages on to you and we keep them no longer than we ' +
-        'need to run the service and keep records straight.',
-
-        'From people who open one of our prospect pages: a reference code ' +
-        'for the page, what happened on it, when, and a coarse idea of the ' +
-        'device — phone or desktop. No name, no cookies, and we do not keep ' +
-        'the IP address. We use it to know whether the page was opened.'
+        'When you call, you first hear a recorded greeting. Your call is then ' +
+        'passed to the business owner’s mobile phone, which shows your ' +
+        'number. When the owner answers, they hear a short recorded prompt ' +
+        'and press 1 to take the call; you never hear it. If the call is not ' +
+        'taken, you hear a short recorded message and may get one text back.',
+        'We do not record calls, and we do not take voicemail. The only ' +
+        'recordings involved are the fixed messages we play.',
+        'We keep your phone number, when you called, and whether the call was ' +
+        'answered. If you text us, we keep what you wrote and pass it, with ' +
+        'your number, to the owner’s phone. The owner can answer from the ' +
+        'business number, so you see that number, not their own. The owner ' +
+        'can only reply to a number that has called or texted the business ' +
+        'number first.',
+        'These records sit in our telephony provider’s call and text logs. ' +
+        'They are how the service knows who may be replied to and who has ' +
+        'already had a text today. They stay there until we delete them; ' +
+        'see below for how to ask.'
+      ]
+    },
+    {
+      heading: 'Businesses we write to',
+      paragraphs: [
+        'We find local trade businesses from the Louisiana State Licensing ' +
+        'Board for Contractors’ public register. From it we keep the ' +
+        'business name, the qualifying party’s name, the mailing address, ' +
+        'phone number and email address on the licence, and the licence type, ' +
+        'status and dates.',
+        'We also look for the business’s own website and check it ourselves: ' +
+        'whether it loads, is secure, works on a phone and shows a phone ' +
+        'number. We skip any site that asks automated visitors to stay away. ' +
+        'To find a website we may give a search service the business name ' +
+        'and town, and nothing else.',
+        'If we write to you, the letter goes to the mailing address on your ' +
+        'licence and carries a reference code. The code opens a page we made ' +
+        'for your business.'
+      ]
+    },
+    {
+      heading: 'People who open one of those pages',
+      paragraphs: [
+        'We record the reference code, what happened on the page (for ' +
+        'example that it was opened, or that the text or call button was ' +
+        'tapped), when, whether it came from the letter or an email, and ' +
+        'whether the device was a phone or a computer. No name, and no ' +
+        'cookies.',
+        'We do not keep your IP address. It is held in memory for about a ' +
+        'minute to stop automated abuse, and our web host keeps ordinary ' +
+        'short-lived server logs, as every website does.'
+      ]
+    },
+    {
+      heading: 'Businesses that hire us',
+      paragraphs: [
+        'The contact details you give us: your name, your business name, ' +
+        'your phone number, your email address, and the address we send post ' +
+        'to. We use them to run your service and to talk to you.'
       ]
     },
     {
@@ -159,30 +212,45 @@ const PRIVACY = {
         'Automated texts go to one group of people only: those who have just ' +
         'called a business number we run. We do not buy lists, we do not send ' +
         'marketing texts, and we do not text anyone who has not just tried to ' +
-        'reach that business.',
+        'reach that business. Other texts from that number are the owner’s ' +
+        'own replies to people who called or texted first.',
         'One text per missed call, at most one per caller in any 24 hours. ' +
         'Message and data rates may apply. Reply ' +
         'STOP to any message to opt out, or HELP for help.',
-        CARRIER_SENTENCE
+        CARRIER_SENTENCE,
+        'The full call and text flow, with the exact words, is at ' +
+        BUSINESS.domain + '/sms.'
       ]
     },
     {
       heading: 'Google Maps content',
       paragraphs: [
-        'Our prospect pages show information about a business taken from ' +
-        'Google Maps — things like the business name, address and reviews as ' +
-        'Google publishes them. Your use of those features is subject to ' +
-        "Google's Privacy Policy."
+        'Our prospect pages, and our own internal tools, can show a ' +
+        'business’s Google listing: its rating, number of reviews, opening ' +
+        'hours and reviews with their authors, with a link to Google Maps. ' +
+        'This is fetched from Google each time the page is opened and is not ' +
+        'stored. The only thing we keep is Google’s ID for the listing.',
+        'Our pages also load fonts, the Google Maps logo and reviewers’ ' +
+        'photos from Google’s servers, so Google receives those requests. ' +
+        'Your use of Google Maps features is subject to Google’s Privacy ' +
+        'Policy and the Google Maps/Google Earth Additional Terms of Service.'
       ],
-      links: [{ label: "Google Privacy Policy", href: GOOGLE_PRIVACY }]
+      links: [
+        { label: 'Google Privacy Policy', href: GOOGLE_PRIVACY },
+        { label: 'Google Maps/Google Earth Additional Terms of Service', href: GOOGLE_MAPS_TERMS }
+      ]
     },
     {
       heading: 'Who else touches your data',
       paragraphs: [
-        'We use a small number of ordinary suppliers to run the service: a ' +
-        'website host, a telephony provider that carries the calls and texts, ' +
-        'an email provider, and a printing and mailing service for letters. ' +
-        'Each one sees only what it needs to do its job.',
+        'We use a small number of ordinary suppliers: a website host, a ' +
+        'telephony provider that carries the calls and texts, an email ' +
+        'provider, Google (for business listings), a web search service ' +
+        '(given a business name and town), a text-analysis service we use to ' +
+        'read public business information, the US Census Bureau’s address ' +
+        'lookup (given a licence mailing address, to place it on our own ' +
+        'map), and the postal service for letters. Each one sees only what ' +
+        'it needs to do its job.',
         'We do not sell your information, and we do not hand it to anyone ' +
         'for their own marketing.'
       ]
@@ -191,16 +259,21 @@ const PRIVACY = {
       heading: 'Getting your data deleted',
       paragraphs: [
         'Email ' + BUSINESS.email + ' and ask. Tell us which business or ' +
-        'phone number it concerns. We will delete what we hold, except ' +
-        'anything we are required to keep for tax or legal records, and we ' +
-        'will tell you what that was.'
+        'phone number it concerns. We will delete what we hold, including ' +
+        'call and text records, except anything we are required to keep for ' +
+        'tax or legal records, and we will tell you what that was.',
+        'If you are a business we wrote to, we keep only your business name ' +
+        'and its reference code after that, so the code is never given to ' +
+        'anyone else and we do not write to you again.',
+        'If you are a client and you leave, your website and its domain stay ' +
+        'yours, and you can ask us to delete everything else.'
       ]
     },
     {
       heading: 'Changes',
       paragraphs: [
-        'If this policy changes we will update this page and change the date ' +
-        'below. Last updated: ' + UPDATED + '.'
+        'If this policy changes we will update this page and the date at the ' +
+        'top.'
       ]
     }
   ]
@@ -213,12 +286,21 @@ const TERMS = {
     'Plain words on purpose.',
   sections: [
     {
+      heading: 'Who we are',
+      paragraphs: [WHO_WE_ARE]
+    },
+    {
       heading: 'The service',
       paragraphs: [
-        'ColdenJames provides three things: a missed-call text-back on a ' +
-        'phone number we set up for your business, text messages asking your ' +
-        'customers for reviews, and a one-page website. We set it up and we ' +
-        'keep it running.',
+        'ColdenJames provides three things: a missed-call text-back, text ' +
+        'messages asking your customers for reviews, and a one-page website. ' +
+        'We set it up and we keep it running.',
+        'For the missed-call text-back, you change one setting on your phone ' +
+        'so that calls you do not answer are passed to a number we run. The ' +
+        'caller gets one text so they know you will get back to them. You can ' +
+        'undo that setting at any time.',
+        'Review-request texts are not switched on yet. We will tell you ' +
+        'before they are, and what they will say.',
         'We are not a phone company. Calls and texts are carried by a ' +
         'third-party telephony provider, and delivery depends on their ' +
         'network and the recipient’s carrier.'
@@ -236,7 +318,8 @@ const TERMS = {
     {
       /* What the carriers check for when they review a texting program.
          **word** renders bold on the page; STOP and HELP are meant to stand
-         out. */
+         out. This is the wording the approved campaign was reviewed
+         against: change it only with the campaign in mind. */
       heading: 'Text messages (SMS)',
       paragraphs: [
         '**Program name:** ColdenJames missed-call text.',
@@ -262,16 +345,16 @@ const TERMS = {
       heading: 'Your domain and your website',
       paragraphs: [
         'The domain name for your website is registered in your name. It is ' +
-        'yours. If you stop using us, you keep it, and we will help you move ' +
-        'it wherever you want to go.'
+        'yours. If you stop using us, you keep it and the website, and we ' +
+        'will help you move them wherever you want to go.'
       ]
     },
     {
       heading: 'Acceptable use',
       paragraphs: [
-        'The texting side of this service only ever replies to someone who ' +
-        'has just contacted your business, or asks a customer of yours for a ' +
-        'review after a job. It is not a marketing tool.',
+        'The texting side of this service only ever texts someone who has ' +
+        'called or texted your business number: the one automated text after ' +
+        'a missed call, and your own replies. It is not a marketing tool.',
         'You may not use it to send bulk texts, marketing messages, or ' +
         'messages to people who have not contacted you. You may not use it to ' +
         'send anything unlawful, misleading, or abusive. If you do, we will ' +
@@ -294,9 +377,10 @@ const TERMS = {
     {
       heading: 'Google Maps content',
       paragraphs: [
-        'Parts of this site show Google Maps content. By using those features ' +
-        'you agree to be bound by the Google Maps/Google Earth Additional ' +
-        'Terms of Service and the Google Privacy Policy.'
+        'Parts of this site show Google Maps content, fetched live from ' +
+        'Google and not stored. By using those features you agree to be ' +
+        'bound by the Google Maps/Google Earth Additional Terms of Service ' +
+        'and the Google Privacy Policy.'
       ],
       links: [
         { label: 'Google Maps/Google Earth Additional Terms of Service', href: GOOGLE_MAPS_TERMS },
@@ -313,8 +397,8 @@ const TERMS = {
     {
       heading: 'Changes',
       paragraphs: [
-        'If these terms change we will update this page and change the date ' +
-        'below. Last updated: ' + UPDATED + '.'
+        'If these terms change we will update this page and the date at the ' +
+        'top.'
       ]
     }
   ]
@@ -398,7 +482,7 @@ const SMS_PAGE = {
 };
 
 module.exports = {
-  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, DRAFT_NOTE, NOT_FOUND, SETUP, SMS_PAGE,
+  BUSINESS, HOME, PRIVACY, TERMS, UPDATED, LEGAL_UPDATED, NOT_FOUND, SETUP, SMS_PAGE,
   STOP_REPLY, HELP_REPLY,
   GOOGLE_PRIVACY, GOOGLE_MAPS_TERMS, CARRIER_SENTENCE
 };

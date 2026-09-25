@@ -105,13 +105,11 @@ function legal(doc, slug) {
   const body = `<header>
   <a class="back" href="/">&larr; ${WORDMARK}</a>
   <h1>${esc(doc.title)}</h1>
+  <p class="updated">Last updated: ${esc(C.LEGAL_UPDATED)}</p>
 </header>
-<p class="draft">${esc(C.DRAFT_NOTE)}</p>
 <p>${esc(doc.intro)}</p>
 
 ${sections}
-
-<p class="updated">Last updated: ${esc(C.UPDATED)}.</p>
 
 ${footer()}`;
 

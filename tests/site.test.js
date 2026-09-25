@@ -207,8 +207,19 @@ test('the privacy policy carries the sentence the carriers require, verbatim', (
   assert.ok(html.includes('Message and data rates may apply'));
   assert.ok(html.includes('One text per missed call, at most one per caller in any 24 hours.'));
   assert.match(html, /href="https:\/\/policies\.google\.com\/privacy"/);
-  assert.ok(html.includes('Plain-English draft'));
-  assert.ok(html.includes('Last updated'));
+  assert.match(html, /href="https:\/\/maps\.google\.com\/help\/terms_maps\/"/);
+  assert.ok(html.includes('We do not record calls'));
+  assert.ok(html.includes('Louisiana State Licensing'));
+  assert.ok(html.includes('COWIE.AI LLC'));
+});
+
+test('neither legal page is marked as a draft, and each is dated under its title', () => {
+  for (const name of ['privacy.html', 'terms.html']) {
+    const html = fs.readFileSync(path.join(OUT, name), 'utf8');
+    assert.strictEqual(/draft|to be reviewed/i.test(html), false, name);
+    assert.match(html, new RegExp('</h1>\\s*<p class="updated">Last updated: ' + C.LEGAL_UPDATED + '</p>'), name);
+    assert.strictEqual((html.match(/Last updated/g) || []).length, 1, name + ' has one date');
+  }
 });
 
 test('the terms carry the Google clause and the commercial terms', () => {
@@ -219,7 +230,8 @@ test('the terms carry the Google clause and the commercial terms', () => {
   assert.ok(html.includes('$79 a month'));
   assert.ok(html.includes('first month is free') || html.includes('First month free'));
   assert.ok(html.includes('Louisiana'));
-  assert.ok(html.includes('Plain-English draft'));
+  assert.ok(html.includes('COWIE.AI LLC'));
+  assert.ok(html.includes('(318) 666-6445'));
 });
 
 /* ---------- house style ---------- */
