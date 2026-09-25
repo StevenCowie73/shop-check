@@ -85,7 +85,7 @@ ${contactBlock()}
 ${footer()}`;
 
   return pageShell({
-    title: C.BUSINESS.brand + ' — missed-call texts, reviews and simple websites for local trades',
+    title: C.BUSINESS.brand + ' — Missed-call texts, reviews and simple websites for local trades',
     description: C.HOME.tagline,
     share: { path: '/' },
     body

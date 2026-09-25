@@ -187,7 +187,7 @@ test('voice dials the owner for 20 seconds with the caller as caller id', async 
 test('the recorded disclosure plays before the call rings through, whatever TEXTING_LIVE says', async () => {
   const { VOICE_DISCLOSURE } = require('../lib/texting-copy.js');
   assert.strictEqual(VOICE_DISCLOSURE,
-    "Thanks for calling ColdenJames. If I miss your call, I'll text you back at this number. " +
+    "Thanks for calling ColdenJames. If we miss your call, we'll text you back at this number. " +
     'Message and data rates may apply. Reply STOP to opt out.');
   assert.strictEqual(RECORDINGS.greeting.text, VOICE_DISCLOSURE, 'the greeting recording is of that wording');
   for (const flag of [undefined, '', 'false', 'TRUE', 'true']) {

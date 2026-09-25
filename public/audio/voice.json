@@ -7,9 +7,9 @@
   "format": "mp3_22050_32",
   "recordings": {
     "greeting": {
-      "file": "greeting-f68b002991.mp3",
-      "text": "Thanks for calling ColdenJames. If I miss your call, I'll text you back at this number. Message and data rates may apply. Reply STOP to opt out.",
-      "sha256": "c3093eecff45693e5900ac7e367945b24ece0526bb6a5d591e29c8591ae9025a"
+      "file": "greeting-a1bffb2712.mp3",
+      "text": "Thanks for calling ColdenJames. If we miss your call, we'll text you back at this number. Message and data rates may apply. Reply STOP to opt out.",
+      "sha256": "becb82788c9bd0524630266dc6aad372ad1f2a3186ceb41f475955e88c93481d"
     },
     "missed-call-off": {
       "file": "missed-call-off-3f15b86261.mp3",
