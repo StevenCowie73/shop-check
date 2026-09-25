@@ -102,7 +102,9 @@ const plays = (body, name) => body.includes(PLAY(name));
 const routes = {
   voice: require('../api/twilio/voice.js'),
   dialStatus: require('../api/twilio/dial-status.js'),
-  sms: require('../api/twilio/sms.js')
+  sms: require('../api/twilio/sms.js'),
+  screen: require('../api/twilio/screen.js'),
+  screenResult: require('../api/twilio/screen-result.js')
 };
 
 /* ---------- the gate ---------- */
@@ -111,7 +113,9 @@ test('every route refuses a bad signature with 403', async () => {
   for (const [name, path, params] of [
     ['voice', '/api/twilio/voice', { From: CALLER, To: BUSINESS }],
     ['dialStatus', '/api/twilio/dial-status', { From: CALLER, To: BUSINESS, DialCallStatus: 'no-answer' }],
-    ['sms', '/api/twilio/sms', { From: CALLER, To: BUSINESS, Body: 'hello' }]
+    ['sms', '/api/twilio/sms', { From: CALLER, To: BUSINESS, Body: 'hello' }],
+    ['screen', '/api/twilio/screen', { From: CALLER, To: OWNER }],
+    ['screenResult', '/api/twilio/screen-result', { From: CALLER, To: OWNER, Digits: '1' }]
   ]) {
     await withEnv(CONFIGURED, async () => {
       const res = fakeRes();
@@ -131,7 +135,7 @@ test('every route refuses a missing signature header with 403', async () => {
 });
 
 test('missing Twilio credentials give 503, not a crash', async () => {
-  for (const name of ['voice', 'dialStatus', 'sms']) {
+  for (const name of ['voice', 'dialStatus', 'sms', 'screen', 'screenResult']) {
     await withEnv({}, async () => {
       const res = fakeRes();
       await routes[name](fakeReq('/api/twilio/voice', { From: CALLER }), res);
@@ -170,15 +174,15 @@ test('GET is refused', async () => {
 
 /* ---------- voice ---------- */
 
-test('voice dials the owner for 20 seconds with the caller as caller id', async () => {
+test('voice dials the owner for 15 seconds with the caller as caller id', async () => {
   await withEnv(CONFIGURED, async () => {
     const res = fakeRes();
     await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
     assert.strictEqual(res.statusCode, 200);
     assert.match(res.headers['content-type'], /text\/xml/);
-    assert.match(res.body, /<Dial timeout="20"/);
+    assert.match(res.body, /<Dial timeout="15" answerOnBridge="true"/);
     assert.match(res.body, new RegExp('callerId="\\' + CALLER + '"'));
-    assert.match(res.body, new RegExp('<Number>\\' + OWNER + '</Number>'));
+    assert.match(res.body, new RegExp('<Number[^>]*>\\' + OWNER + '</Number>'));
     assert.match(res.body, /action="https:\/\/example\.test\/api\/twilio\/dial-status"/);
     assert.match(res.body, /method="POST"/);
   });
@@ -198,9 +202,9 @@ test('the recorded disclosure plays before the call rings through, whatever TEXT
       const label = 'TEXTING_LIVE ' + JSON.stringify(flag);
       assert.strictEqual(res.statusCode, 200, label);
       assert.ok(res.body.startsWith('<?xml') || res.body.includes('<Response>'), label);
-      assert.ok(res.body.includes('<Response>' + PLAY('greeting') + '<Dial timeout="20"'),
+      assert.ok(res.body.includes('<Response>' + PLAY('greeting') + '<Dial timeout="15"'),
         'Play the greeting first, then Dial: ' + label);
-      assert.match(res.body, new RegExp('<Number>\\' + OWNER + '</Number>'), label);
+      assert.match(res.body, new RegExp('<Number[^>]*>\\' + OWNER + '</Number>'), label);
       assert.strictEqual((res.body.match(/<Play>/g) || []).length, 1, 'played once: ' + label);
       assert.strictEqual(res.body.includes('<Say>'), false, 'no robot voice: ' + label);
     });
@@ -655,4 +659,132 @@ test('the audio URL follows the host Twilio called, or PUBLIC_BASE_URL', async (
       'https://signal.example.test/audio/' + file);
   });
   assert.throws(() => audioUrl(fakeReq('/api/twilio/voice', {}), 'nope'), /no recording called nope/);
+});
+
+/* ---------- call screening, self-tests, and when a call counts as answered ---------- */
+
+const DIAL_STATUS = BASE + '/api/twilio/dial-status';
+const dialStatusReq = extra =>
+  fakeReq('/api/twilio/dial-status', { From: CALLER, To: BUSINESS, ...extra });
+
+test('the forward rings for 15 seconds and screens whoever answers', async () => {
+  await withEnv(CONFIGURED, async () => {
+    const res = fakeRes();
+    await routes.voice(fakeReq('/api/twilio/voice', { From: CALLER, To: BUSINESS }), res);
+    assert.match(res.body, /<Dial timeout="15" answerOnBridge="true"/);
+    assert.ok(res.body.includes('<Number url="' + BASE + '/api/twilio/screen" method="POST">' + OWNER + '</Number>'),
+      'the owner leg runs the screen before connecting');
+    assert.ok(res.body.includes('action="' + DIAL_STATUS + '"'));
+  });
+});
+
+test('the screen asks for 1 within 5 seconds, then hangs up the owner leg', async () => {
+  await withEnv(CONFIGURED, async () => {
+    const res = fakeRes();
+    await routes.screen(fakeReq('/api/twilio/screen', { From: CALLER, To: OWNER }), res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.ok(res.body.includes('<Gather numDigits="1" timeout="5" action="' + BASE +
+      '/api/twilio/screen-result" method="POST">' + PLAY('screen') + '</Gather><Hangup/>'));
+    const { SCREEN_PROMPT } = require('../lib/texting-copy.js');
+    assert.strictEqual(SCREEN_PROMPT, 'ColdenJames call. Press 1 to take it.');
+    assert.strictEqual(RECORDINGS.screen.text, SCREEN_PROMPT);
+  });
+});
+
+test('only a pressed 1 takes the call; any other digit hangs the owner leg up', async () => {
+  for (const [digits, connects] of [['1', true], ['2', false], ['*', false], ['', false], ['11', false]]) {
+    await withEnv(CONFIGURED, async () => {
+      const res = fakeRes();
+      await routes.screenResult(fakeReq('/api/twilio/screen-result', { From: CALLER, To: OWNER, Digits: digits }), res);
+      assert.strictEqual(res.statusCode, 200);
+      if (connects) assert.match(res.body, /<Response><\/Response>/, 'empty: the call is connected');
+      else assert.match(res.body, /<Response><Hangup\/><\/Response>/, JSON.stringify(digits) + ' does not connect');
+    });
+  }
+});
+
+test('screened leg + 1 = answered: bridged, so no recording, no lookup, no text', async () => {
+  await withEnv(LIVE, () => captureSends(async (sent, looked) => {
+    const res = fakeRes();
+    await routes.dialStatus(dialStatusReq({ DialCallStatus: 'completed', DialBridged: 'true' }), res);
+    assert.match(res.body, /<Response><Hangup\/><\/Response>/);
+    assert.deepStrictEqual(sent, []);
+    assert.deepStrictEqual(looked, []);
+  }));
+});
+
+test('screened leg with no digit (voicemail) = missed: recording and text, though Twilio says completed', async () => {
+  await withEnv(LIVE, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(dialStatusReq({ DialCallStatus: 'completed', DialBridged: 'false' }), res);
+    assert.strictEqual(sent.length, 1, 'the auto-text goes out');
+    assert.strictEqual(sent[0].params.To, CALLER);
+    assert.ok(plays(res.body, 'missed-call-on'), 'and the caller hears it has');
+  }, { recent: [] }));
+});
+
+test('a real no-answer is still the missed path', async () => {
+  await withEnv(LIVE, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(dialStatusReq({ DialCallStatus: 'no-answer', DialBridged: 'false' }), res);
+    assert.strictEqual(sent.length, 1);
+    assert.ok(plays(res.body, 'missed-call-on'));
+  }, { recent: [] }));
+});
+
+test('a completed Dial with no DialBridged at all counts as answered, never as missed', async () => {
+  await withEnv(LIVE, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(dialStatusReq({ DialCallStatus: 'completed' }), res);
+    assert.deepStrictEqual(sent, []);
+    assert.match(res.body, /<Response><Hangup\/><\/Response>/);
+  }));
+  const { answered } = require('../api/twilio/dial-status.js');
+  assert.strictEqual(answered({ DialCallStatus: 'completed', DialBridged: 'TRUE' }), true);
+  assert.strictEqual(answered({ DialCallStatus: 'no-answer', DialBridged: 'true' }), false);
+  assert.strictEqual(answered({}), false, 'no Dial at all (a self-test) is not answered');
+});
+
+test('a call from the owner skips the forward: greeting, then straight to the missed path', async () => {
+  await withEnv(LIVE, async () => {
+    const res = fakeRes();
+    await routes.voice(fakeReq('/api/twilio/voice', { From: OWNER, To: BUSINESS }), res);
+    assert.ok(res.body.includes('<Response>' + PLAY('greeting') + '<Redirect method="POST">' + DIAL_STATUS + '</Redirect></Response>'));
+    assert.strictEqual(res.body.includes('<Dial'), false, 'nothing rings');
+  });
+  await withEnv(LIVE, () => captureSends(async sent => {
+    const res = fakeRes();
+    await routes.dialStatus(fakeReq('/api/twilio/dial-status', { From: OWNER, To: BUSINESS, CallStatus: 'in-progress' }), res);
+    assert.strictEqual(sent.length, 1, 'the owner gets the auto-text, as a caller would');
+    assert.strictEqual(sent[0].params.To, OWNER);
+    assert.ok(plays(res.body, 'missed-call-on'));
+  }, { recent: [] }));
+});
+
+test('the 24-hour rule holds on every missed path', async () => {
+  for (const [label, extra] of [
+    ['screened, no digit', { DialCallStatus: 'completed', DialBridged: 'false' }],
+    ['no-answer', { DialCallStatus: 'no-answer' }],
+    ['busy', { DialCallStatus: 'busy' }],
+    ['self-test', { From: OWNER }]
+  ]) {
+    await withEnv(LIVE, () => captureSends(async (sent, looked) => {
+      const res = fakeRes();
+      await routes.dialStatus(dialStatusReq(extra), res);
+      assert.strictEqual(looked.length, 1, label + ': asked Twilio first');
+      assert.deepStrictEqual(sent, [], label + ': no second text within 24 hours');
+      assert.ok(plays(res.body, 'missed-call-off'), label + ': "Steven will call you back"');
+    }, { recent: [{ sid: 'SMearlier' }] }));
+  }
+});
+
+test('with texting off every missed path plays the call-back line and sends nothing', async () => {
+  for (const extra of [{ DialCallStatus: 'completed', DialBridged: 'false' }, { From: OWNER }]) {
+    await withEnv(CONFIGURED, () => captureSends(async sent => {
+      const res = fakeRes();
+      await routes.dialStatus(dialStatusReq(extra), res);
+      assert.deepStrictEqual(sent, []);
+      assert.ok(plays(res.body, 'missed-call-off'));
+    }));
+  }
 });

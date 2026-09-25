@@ -1,13 +1,40 @@
 # Missed-call text-back
 
-Three webhooks. Someone rings the business number, it forwards to the owner's
-cell for twenty seconds, and if they do not pick up the caller gets one text.
+Five webhooks. Someone rings the business number, it forwards to the owner's
+cell for fifteen seconds, and if they do not take the call the caller gets one
+text.
 
 | route | Twilio setting | what it does |
 |-------|----------------|--------------|
-| `/api/twilio/voice` | A Call Comes In | dials `OWNER_CELL`, caller's number as caller ID |
-| `/api/twilio/dial-status` | set by `voice`, not configured by hand | texts the caller if the dial did not complete |
+| `/api/twilio/voice` | A Call Comes In | dials `OWNER_CELL`, caller's number as caller ID; a call from `OWNER_CELL` itself goes straight to the missed-call path |
+| `/api/twilio/screen` | set by `voice`, not configured by hand | plays "ColdenJames call. Press 1 to take it." on the owner's cell when it answers |
+| `/api/twilio/screen-result` | set by `screen` | 1 connects the caller; anything else hangs up the owner's leg |
+| `/api/twilio/dial-status` | set by `voice`, not configured by hand | texts the caller unless the owner took the call (Twilio bridged it) |
 | `/api/twilio/sms` | A Message Comes In | forwards inbound texts to `OWNER_CELL`; texts from `OWNER_CELL` are replies, sent on from the business number |
+
+## Picking up a ColdenJames call
+
+When someone calls ColdenJames, your cell rings for about 15 seconds,
+showing the caller's own number.
+
+**When you answer, you'll hear: "ColdenJames call. Press 1 to take it."**
+Press **1** and you're put through. The caller never hears that message;
+they just hear ringing until you press 1.
+
+Why: if your phone is busy, off, or you don't answer, your own voicemail
+picks up — and to the phone system that looks exactly like you answering.
+Voicemail can't press 1. So a call only counts as taken when you press 1;
+otherwise it's a missed call, and the caller hears "Sorry we missed you"
+and gets the text, the same as if it had never been answered.
+
+- You have about 5 seconds to press 1. If you're too slow, the call is
+  treated as missed and the caller gets the text — ring them back.
+- Pressing any other key does the same as not pressing anything: the call
+  is treated as missed.
+- **Testing it yourself:** calling ColdenJames from your own cell won't
+  ring your cell. You hear the greeting and then exactly what a caller who
+  was missed would hear, and you get the text if you'd get one (at most one
+  a day).
 
 ## Texting customers from the ColdenJames number
 

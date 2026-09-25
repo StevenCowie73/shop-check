@@ -4,10 +4,16 @@
 
    Twilio posts here when the Dial ends. The parameters are still those of
    the original inbound call — From is the caller, To is the business
-   number — with DialCallStatus describing the outcome.
+   number — with DialCallStatus and DialBridged describing the outcome.
+   The voice route also redirects here, with no Dial at all, when the owner
+   calls himself to test it.
 
-   Anything other than "completed" means the caller did not get through, so
-   they get one text. That is the whole product. */
+   The caller got through only if the Dial completed AND Twilio bridged the
+   two calls. With call screening, a bridge only happens after 1 is pressed
+   on the owner's cell; when voicemail answers, the leg is answered but
+   never bridged, and Twilio can still report it as "completed" — so
+   "completed" alone is not enough. Anything else means the caller did not
+   get through, and they get one text. That is the whole product. */
 
 const { authorize, twiml, sendSms, textedWithin, textingLive } = require('../../lib/twilio.js');
 const { MISSED_CALL_TEXT } = require('../../lib/texting-copy.js');
@@ -19,14 +25,24 @@ const DEFAULT_TEXT = MISSED_CALL_TEXT;
    One a day is a reminder; three is a nuisance and a carrier complaint. */
 const QUIET_HOURS = 24;
 
+/* Did the caller actually speak to the owner? DialBridged is Twilio's own
+   record of whether the two calls were connected. If Twilio ever leaves it
+   out, a completed Dial counts as answered: a caller who did talk to the
+   owner must never be told they were missed. */
+function answered(params) {
+  const status = String(params.DialCallStatus || '').toLowerCase();
+  if (status !== 'completed') return false;
+  const bridged = params.DialBridged;
+  if (bridged === undefined || bridged === null || bridged === '') return true;
+  return String(bridged).toLowerCase() === 'true';
+}
+
 module.exports = async function handler(req, res) {
   const gate = await authorize(req, res);
   if (!gate) return;
 
   const { params, sid, token } = gate;
-  const status = String(params.DialCallStatus || '').toLowerCase();
-
-  if (status === 'completed') {
+  if (answered(params)) {
     twiml(res, '<Hangup/>');
     return;
   }
@@ -75,3 +91,5 @@ module.exports = async function handler(req, res) {
 
   twiml(res, play(req, 'missed-call-on') + '<Hangup/>');
 };
+
+module.exports.answered = answered;
