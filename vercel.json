@@ -8,6 +8,9 @@
       "maxDuration": 120
     }
   },
+  "rewrites": [
+    { "source": "/explorer", "destination": "/api/explorer" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

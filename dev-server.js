@@ -93,6 +93,11 @@ http.createServer(async (req, res) => {
     return require(apiRoutes[url.pathname])(req, res);
   }
 
+  /* Explorer, the same rewrite vercel.json does */
+  if (url.pathname === '/explorer' || url.pathname === '/api/explorer') {
+    return require('./api/explorer.js')(req, res);
+  }
+
   if (url.pathname === '/api/lookup') {
     res.status = code => { res.statusCode = code; return res; };
     res.json = obj => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); };
