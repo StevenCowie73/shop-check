@@ -386,7 +386,11 @@ async function checkSite(row) {
 
   if (!res.ok) {
     const body = await readCapped(res, 64 * 1024).catch(() => ({ bytes: 0 }));
-    if (BLOCKED_STATUS.has(res.status) || isBotChallenge(body.text, res.status, res.headers)) {
+    /* Redirects are followed, so a 3xx that still comes back is one with
+       no usable Location: a firewall's challenge (Sucuri answers 307 to a
+       robot), not a site that is down. */
+    const unfollowable = res.status >= 300 && res.status < 400;
+    if (BLOCKED_STATUS.has(res.status) || unfollowable || isBotChallenge(body.text, res.status, res.headers)) {
       return blockedRecord(record, { finalUrl, finalScheme, status: res.status });
     }
     return Object.assign(record, {

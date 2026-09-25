@@ -26,6 +26,7 @@ http.createServer((req, res) => {
     case '/forbidden': return send(403, page('403 Forbidden', '<h1>Forbidden</h1>'));
     case '/unauthorised': return send(401, page('401', 'Authorization Required'));
     case '/too-many': return send(429, page('Too Many Requests', 'Slow down'));
+    case '/redirect-no-location': return send(307, page('Redirecting', ''));
     case '/challenge-202': return send(202, page('Just a moment...', '<p>Checking your browser before accessing the site.</p>'));
     case '/challenge-200': return send(200, page('Invented Fencing Co', '<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1"></script>'));
     case '/challenge-header': return send(200, page('Hello', 'x'), { 'cf-mitigated': 'challenge' });
@@ -63,7 +64,7 @@ test.before(async () => {
   const server = spawn(process.execPath, ['-e', SERVER], { stdio: ['ignore', 'pipe', 'inherit'] });
   const port = await new Promise(r => server.stdout.once('data', d => r(String(d).trim())));
   const base = 'http://127.0.0.1:' + port;
-  const paths = ['/forbidden', '/unauthorised', '/too-many', '/challenge-202', '/challenge-200', '/challenge-header',
+  const paths = ['/forbidden', '/unauthorised', '/too-many', '/redirect-no-location', '/challenge-202', '/challenge-200', '/challenge-header',
                  '/challenge-503', '/down', '/missing', '/', '/real-page-about-security'];
   const urls = paths.map(p => base + p).concat(['http://no-such-business-anywhere.invalid/']);
   const r = spawnSync(process.execPath, ['-e', CLIENT, ROOT, JSON.stringify(urls)], { env: noProxy(), encoding: 'utf8', timeout: 90000 });
@@ -93,6 +94,7 @@ function isBroken(r, label, problem) {
 test('403 is unknown — the site blocked the check', () => isBlocked(results['/forbidden'], '403'));
 test('401 is unknown', () => isBlocked(results['/unauthorised'], '401'));
 test('429 is unknown', () => isBlocked(results['/too-many'], '429'));
+test('a redirect with nowhere to go (a firewall challenge) is unknown, not broken', () => isBlocked(results['/redirect-no-location'], '307 with no Location'));
 test('a challenge page is unknown whether it comes back 202, 200 or 503', () => {
   isBlocked(results['/challenge-202'], '202 "Just a moment"');
   isBlocked(results['/challenge-200'], '200 with a Cloudflare challenge script');
