@@ -626,6 +626,11 @@ test('the pilot importer maps a spine record, its ref, audit and pin', async () 
   assert.strictEqual(b.selected, false);
   assert.strictEqual(b.audit.state, 'broken');
   assert.strictEqual(b.lat, undefined, 'no match, no pin');
+  const { auditOf } = require('../db/importers/pilot.js');
+  const old = { websiteState: 'dead', websiteAudit: { url: 'https://quietoak.example.com', loads: false } };
+  assert.strictEqual(auditOf(old, { website: 'https://quietoak.example.com', loads: false, status: 403 }).state, 'blocked',
+    'a 403 recorded as dead by an older audit is blocked, not broken');
+  assert.strictEqual(auditOf(old, { website: 'https://quietoak.example.com', loads: false, status: 503 }).state, 'broken');
 });
 
 test('the pilot importer takes the twenty from the shortlist, not from who holds a code', async () => {

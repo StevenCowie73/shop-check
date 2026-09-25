@@ -46,6 +46,9 @@ function auditOf(rec, site = null) {
   const s = rec.websiteState;
   let state = 'unknown';
   if (s === 'fine' || s === 'poor') state = s;
+  /* An audit made before the blocked-check fix recorded a 401, 403 or 429
+     as dead. The site refused a robot; that is blocked, never broken. */
+  else if (s === 'dead' && site && [401, 403, 429].includes(site.status)) state = 'blocked';
   else if (s === 'dead') state = 'broken';
   else if (s === 'not found') state = 'not_found';
   else if (s === 'unknown' && ((site && site.blocked) || /block|403|forbidden|bot/i.test(a.skipNote || ''))) state = 'blocked';
@@ -54,13 +57,14 @@ function auditOf(rec, site = null) {
   return {
     url: finalUrl || a.url || (rec.website !== 'not found' ? rec.website : null) || null,
     state,
-    loads: a.loads ?? null,
+    loads: state === 'blocked' ? null : (a.loads ?? null),
     https: looked && site.loads ? /^https/i.test(site.finalScheme || finalUrl) : null,
     viewport: looked && site.loads ? !!site.viewport : null,
     phoneOnPage: looked && site.loads ? !!site.phoneOnPage : null,
     newestYear: looked && site.loads ? (site.newestYear || null) : null,
     statusCode: site && Number.isFinite(site.status) ? site.status : null,
-    whatsWrong: a.whatsWrong || a.skipNote || (site && site.skipNote) || null,
+    whatsWrong: state === 'blocked' ? 'unknown — the site blocked the check'
+      : (a.whatsWrong || a.skipNote || (site && site.skipNote) || null),
     foundBy: rec.astra && rec.website && rec.astra.website === rec.website ? 'astra' : (rec.websiteCandidate ? 'email' : null),
     checkedAt: (site && site.checkedAt) || null
   };
