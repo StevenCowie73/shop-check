@@ -15,7 +15,7 @@ const { Readable } = require('node:stream');
 const { makeHandler } = require('../api/explorer.js');
 const { createDemoStore } = require('../lib/explorer/demo-store.js');
 const { build } = require('../lib/explorer/demo-data.js');
-const { getStore, resetStore } = require('../lib/explorer/store.js');
+const { getStore, resetStore, dataMode } = require('../lib/explorer/store.js');
 const { whereFor } = require('../lib/explorer/pg-store.js');
 const { mask, maskInText, liveTwilioFeed } = require('../lib/explorer/twilio-feed.js');
 const { GOOGLE_LOGO } = require('../api/places.js');
@@ -188,14 +188,45 @@ test('the Postgres store builds the same filters as parameters, never as SQL tex
   assert.ok(params.includes('replied') && params.includes('blocked') && params.includes('youngsville'));
 });
 
-test('Postgres is chosen when a database URL is set, demo otherwise', () => {
+test('EXPLORER_DATA picks the backend; a database URL alone never does', () => {
+  const URL_ = 'postgres://u:p@localhost:1/none';
   resetStore();
   assert.strictEqual(getStore({}).mode, 'demo');
+  /* What the Neon integration sets on the project, with no switch: still demo. */
+  for (const k of ['DATABASE_URL', 'COLDENJAMES_URL', 'COLDENJAMES_DATABASE_URL']) {
+    resetStore();
+    assert.strictEqual(getStore({ [k]: URL_ }).mode, 'demo', k + ' alone must not switch the backend');
+  }
   resetStore();
-  const s = getStore({ DATABASE_URL: 'postgres://u:p@localhost:1/none' });
-  assert.strictEqual(s.mode, 'postgres');
+  assert.strictEqual(getStore({ EXPLORER_DATA: 'demo', COLDENJAMES_DATABASE_URL: URL_ }).mode, 'demo');
   resetStore();
-  assert.strictEqual(getStore({ COLDENJAMES_URL: 'postgres://u:p@localhost:1/none' }).mode, 'postgres');
+  assert.strictEqual(getStore({ EXPLORER_DATA: 'nonsense', COLDENJAMES_DATABASE_URL: URL_ }).mode, 'demo');
+  assert.strictEqual(dataMode({}), 'demo');
+  assert.strictEqual(dataMode({ EXPLORER_DATA: ' Postgres ' }), 'postgres');
+  resetStore();
+});
+
+test('EXPLORER_DATA=postgres reads the database, and says so when there is none', () => {
+  const URL_ = 'postgres://u:p@localhost:1/none';
+  for (const k of ['DATABASE_URL', 'COLDENJAMES_URL', 'COLDENJAMES_DATABASE_URL']) {
+    resetStore();
+    assert.strictEqual(getStore({ EXPLORER_DATA: 'postgres', [k]: URL_ }).mode, 'postgres', k);
+  }
+  resetStore();
+  assert.throws(() => getStore({ EXPLORER_DATA: 'postgres' }), /EXPLORER_DATA=postgres but no database URL/);
+  resetStore();
+});
+
+test('bootstrap reports demo mode with a database URL set but no switch', async () => {
+  resetStore();
+  const handler = makeHandler({
+    env: { LOOKUP_PASSWORD: PW, COLDENJAMES_DATABASE_URL: 'postgres://u:p@localhost:1/none' },
+    twilioFeed: async () => []
+  });
+  const res = fakeRes();
+  await handler(fakeReq('/explorer?action=bootstrap', { password: PW }), res);
+  assert.strictEqual(res.statusCode, 200);
+  assert.strictEqual(res.json().mode, 'demo');
   resetStore();
 });
 
@@ -401,6 +432,24 @@ test('the map is Google’s: no Leaflet or OpenStreetMap anywhere in Explorer', 
   }
 });
 
+test('the map opens on Bossier / Caddo unless the link names an area', () => {
+  const vm = require('node:vm');
+  const { pageHtml, DEFAULT_MAP_AREA } = require('../lib/explorer/page.js');
+  assert.strictEqual(DEFAULT_MAP_AREA, 'bossier-caddo');
+  const html = pageHtml();
+  assert.ok(html.includes('var DEFAULT_MAP_AREA = "bossier-caddo";'));
+  assert.ok(html.includes('<option value="all">All areas</option>'), '"All areas" has a value of its own');
+  const src = html.match(/function mapArea\(q\) \{[\s\S]*?\n  \}/)[0];
+  const areas = build().areas.map(a => ({ id: a.id }));
+  const mapArea = vm.runInNewContext('(' + src + ')', { boot: { areas }, DEFAULT_MAP_AREA });
+  const q = s => new URLSearchParams(s);
+  assert.strictEqual(mapArea(q('')), 'bossier-caddo', 'no area in the link: Bossier / Caddo');
+  assert.strictEqual(mapArea(q('area=all')), '', '"All areas" stays chosen');
+  assert.strictEqual(mapArea(q('area=youngsville')), 'youngsville');
+  const without = vm.runInNewContext('(' + src + ')', { boot: { areas: [{ id: 'youngsville' }] }, DEFAULT_MAP_AREA });
+  assert.strictEqual(without(q('')), '', 'falls back to all areas where there is no Bossier / Caddo');
+});
+
 test('the map key is handed over only after the password, and its absence is said plainly', async () => {
   const { handler } = setup();
   const shell = fakeRes();
@@ -599,7 +648,7 @@ test('the letters, tracking and Twilio importers map invented fixtures', async (
 
 test('importers refuse to run from the command line without a database and --confirm', () => {
   const { execFileSync } = require('node:child_process');
-  const env = { ...process.env, DATABASE_URL: '', COLDENJAMES_URL: '' };
+  const env = { ...process.env, DATABASE_URL: '', COLDENJAMES_URL: '', COLDENJAMES_DATABASE_URL: '' };
   let err = null;
   try { execFileSync(process.execPath, [path.join(__dirname, '..', 'db', 'importers', 'tracking.js'), 'x'], { env, stdio: 'pipe' }); }
   catch (e) { err = e; }

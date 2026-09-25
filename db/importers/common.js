@@ -33,9 +33,11 @@ function args(argv) {
 /* The command-line door: a real database, and a deliberate --confirm. */
 async function cliStore(opts) {
   const { databaseUrl, getStore } = require('../../lib/explorer/store.js');
-  if (!databaseUrl()) throw new Error('Set COLDENJAMES_URL or DATABASE_URL first. Importers only write to a real database.');
+  if (!databaseUrl()) throw new Error('Set COLDENJAMES_URL, COLDENJAMES_DATABASE_URL or DATABASE_URL first. Importers only write to a real database.');
   if (!opts.confirm) throw new Error('Add --confirm to write to ' + databaseUrl().replace(/\/\/[^@]*@/, '//…@') + '.');
-  return getStore();
+  /* Importers always write to the database, whatever EXPLORER_DATA says
+     the page reads. */
+  return getStore({ ...process.env, EXPLORER_DATA: 'postgres' });
 }
 
 module.exports = { isoDate, readJson, args, cliStore };

@@ -67,9 +67,11 @@ arrives when the database exists.
 
 - Postgres schema in `db/migrations/` (areas, runs, prospects, audits,
   letters, events, messages, notes, overrides, outcomes).
-- A data layer with two backends: **DEMO** (in-memory invented data, used
-  now) and **POSTGRES** (used once `COLDENJAMES_URL` or `DATABASE_URL` is
-  set). Nothing else changes when switching.
+- A data layer with two backends, chosen by `EXPLORER_DATA` alone:
+  **DEMO** (`demo`, the default: in-memory invented data) and **POSTGRES**
+  (`postgres`: the database at `COLDENJAMES_URL`, `COLDENJAMES_DATABASE_URL`
+  or `DATABASE_URL`). A database URL on its own never switches the backend.
+  Nothing else changes when switching.
 - Importers, ready for later and not run against real data yet: LSLBC pilot
   outputs, audits, rendered letters, tracking events, Twilio call/text
   history.
