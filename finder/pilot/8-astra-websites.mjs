@@ -53,12 +53,20 @@ WEBSITE: <full address, or not found>
 SOURCE: <URL you opened, or why nothing could be confirmed>`;
 
 const slug = s => s.replace(/[^A-Za-z0-9]+/g, '_').slice(0, 60);
-let spent = 0;
-const results = [];
+/* A second pass of the same round (companies that rose into the twenty
+   after a re-check) adds to the round's answers rather than replacing them:
+   the earlier answers were paid for, and step 15 reads them from this file. */
+const earlier = fs.existsSync(RESULTS) ? JSON.parse(fs.readFileSync(RESULTS, 'utf8')) : { spent: 0, results: [] };
+const asked = new Set(earlier.results.filter(r => !r.error).map(r => r.company));
+const results = earlier.results.filter(r => !targets.some(t => t.company === r.company) || asked.has(r.company));
+let spent = earlier.spent || 0;
+const spentBefore = spent;
+if (earlier.results.length) console.error(`round ${ROUND} already has ${earlier.results.length} answers ($${spentBefore.toFixed(2)}); adding to them`);
 
 for (let i = 0; i < targets.length; i++) {
   const t = targets[i];
-  if (spent >= SPEND_CAP) {
+  if (asked.has(t.company)) { console.error(`${i + 1}/${targets.length} ${t.company}: already answered in round ${ROUND}, not asked again`); continue; }
+  if (spent - spentBefore >= SPEND_CAP) {
     console.error(`STOPPED at ${i}/${targets.length}: spend cap $${SPEND_CAP} reached ($${spent.toFixed(2)})`);
     break;
   }
@@ -82,7 +90,7 @@ for (let i = 0; i < targets.length; i++) {
     continue;
   }
   /* on disk before anything is parsed — a crash after billing must not lose it */
-  fs.writeFileSync(`${RAW}/${String(i).padStart(2, '0')}_${slug(t.company)}.json`, scrub(text));
+  fs.writeFileSync(`${RAW}/${String(results.length).padStart(2, '0')}_${slug(t.company)}.json`, scrub(text));
 
   let j = null;
   try { j = JSON.parse(text); } catch (e) { /* handled below */ }
@@ -121,7 +129,7 @@ for (let i = 0; i < targets.length; i++) {
 }
 
 fs.writeFileSync(RESULTS, JSON.stringify({ spent, results }, null, 1));
-console.error(`\nTOTAL SPEND: $${spent.toFixed(2)} over ${results.length} lookups`);
+console.error(`\nTHIS RUN: $${(spent - spentBefore).toFixed(2)}; ROUND ${ROUND} TOTAL: $${spent.toFixed(2)} over ${results.length} lookups`);
 
 /* Every website Astra named goes to the audit next (audit.js astra ROUND),
    so write the list it reads. */

@@ -171,6 +171,40 @@ test('Astra targets: round 1 is the top 20 with no website of their own; round 2
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('Astra round 2 never re-asks a company a saved round already answered, even before the merge folds it in', () => {
+  const recs = [record('Pangolin Ridge Roofing Co'), record('Wombat Hollow Builders'), record('Numbat Creek Fencing')];
+  const dir = spineDir(recs);
+  try {
+    assert.strictEqual(step('5-shortlist.js', dir).status, 0);
+    fs.mkdirSync(path.join(dir, 'astra'), { recursive: true });
+    /* a rebuild has not folded round 2 in yet, so no record carries rec.astra */
+    fs.writeFileSync(path.join(dir, 'astra', 'websites-round2.json'), JSON.stringify({ spent: 0.4, results: [
+      { company: 'Pangolin Ridge Roofing Co', city: 'Youngsville', website: 'not found' },
+      { company: 'Numbat Creek Fencing', city: 'Youngsville', website: 'not found', error: 'HTTP 500' }] }));
+    const r = step('astra-targets.js', dir, {}, ['2']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const t2 = JSON.parse(fs.readFileSync(path.join(dir, 'astra', 'targets.json'), 'utf8'));
+    assert.deepStrictEqual(t2.map(t => t.company).sort(), ['Numbat Creek Fencing', 'Wombat Hollow Builders'],
+      'an answered lookup is never paid for twice; an errored one searched nothing and may be asked again');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("re-auditing an Astra round rebuilds its list from the round's saved answers", () => {
+  const dir = tmpArea();
+  try {
+    fs.mkdirSync(path.join(dir, 'astra'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'astra', 'websites-round1.json'), JSON.stringify({ spent: 0.4, results: [
+      { company: 'Pangolin Ridge Roofing Co', city: 'Youngsville', website: 'not found' },
+      { company: 'Wombat Hollow Builders', city: 'Youngsville', website: 'https://wombat.example.test/' }] }));
+    /* the audit then runs on the rebuilt list: .test never resolves, so it fails fast */
+    const r = step('audit.js', dir, {}, ['astra', '1']);
+    assert.match(r.stdout, /rebuilt the audit list from round 1's saved answers: 1 websites/);
+    const csv = fs.readFileSync(path.join(dir, 'astra', 'audit-round1', 'prospects.csv'), 'utf8');
+    assert.match(csv, /Wombat Hollow Builders,,https:\/\/wombat\.example\.test\//);
+    assert.doesNotMatch(csv, /Pangolin/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the audit wrapper skips a round with nothing to audit instead of failing', () => {
   const dir = tmpArea();
   try {

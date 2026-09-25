@@ -30,14 +30,24 @@ function args(argv) {
   return out;
 }
 
-/* The command-line door: a real database, and a deliberate --confirm. */
-async function cliStore(opts) {
-  const { databaseUrl, getStore } = require('../../lib/explorer/store.js');
-  if (!databaseUrl()) throw new Error('Set COLDENJAMES_URL, COLDENJAMES_DATABASE_URL or DATABASE_URL first. Importers only write to a real database.');
-  if (!opts.confirm) throw new Error('Add --confirm to write to ' + databaseUrl().replace(/\/\/[^@]*@/, '//…@') + '.');
-  /* Importers always write to the database, whatever EXPLORER_DATA says
-     the page reads. */
-  return getStore({ ...process.env, EXPLORER_DATA: 'postgres' });
+/* The command-line door: a real database, and a deliberate --confirm.
+   --https talks to Neon over its HTTPS endpoint (db/neon-http.js), for a
+   machine where the Postgres port is blocked. */
+function cliPool(opts) {
+  const { databaseUrl } = require('../../lib/explorer/store.js');
+  const url = databaseUrl();
+  if (!url) throw new Error('Set COLDENJAMES_URL, COLDENJAMES_DATABASE_URL or DATABASE_URL first. Importers only write to a real database.');
+  if (!opts.confirm) throw new Error('Add --confirm to write to ' + url.replace(/\/\/[^@]*@/, '//…@') + '.');
+  if (opts.https) return require('../neon-http.js').createNeonHttpPool(url);
+  const { Pool } = require('pg');
+  return new Pool({ connectionString: url, max: 3, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true } });
 }
 
-module.exports = { isoDate, readJson, args, cliStore };
+/* Importers always write to the database, whatever EXPLORER_DATA says the
+   page reads. */
+async function cliStore(opts) {
+  const { createPgStore } = require('../../lib/explorer/pg-store.js');
+  return createPgStore(cliPool(opts));
+}
+
+module.exports = { isoDate, readJson, args, cliPool, cliStore };

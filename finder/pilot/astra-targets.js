@@ -32,7 +32,19 @@ if (ROUND === '1') {
   pool = rows.map(r => byCompany.get(r.company)).filter(Boolean)
     .filter(r => r.needsAstra || (!r.websiteCandidate && !r.astra && !r.websiteAudit));
 }
-const targets = pool.filter(r => !r.astra)
+/* A company only carries rec.astra once its round has been folded in, and a
+   rebuild (npm run pilot:rebuild) folds round 2 in only at step 15. So read
+   every round's saved answers too: a lookup that came back, found or not, is
+   never paid for twice. An errored lookup searched nothing and may be asked
+   again. */
+const answered = new Set();
+for (const round of ['1', '2']) {
+  if (!fs.existsSync(P.astraWebsites(round))) continue;
+  for (const a of JSON.parse(fs.readFileSync(P.astraWebsites(round), 'utf8')).results || []) {
+    if (!a.error) answered.add(a.company);
+  }
+}
+const targets = pool.filter(r => !r.astra && !answered.has(r.company))
   .map(r => ({ company: r.company, city: titleCase(r.mailingAddress.city || '') }));
 
 fs.mkdirSync(path.dirname(P.astraTargets), { recursive: true });

@@ -324,7 +324,8 @@ test('nothing Google returns is written to the store', async () => {
 });
 
 test('the database has nowhere to put Google data except place_id', () => {
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '001_explorer.sql'), 'utf8')
+  const dir = path.join(__dirname, '..', 'db', 'migrations');
+  const sql = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n')
     .replace(/--.*$/gm, '');                                     /* comments may mention them; columns may not */
   for (const col of ['rating', 'review', 'opening_hours', 'hours', 'photo', 'user_rating', 'google_maps_uri', 'display_name']) {
     assert.strictEqual(new RegExp('\\b\\w*' + col + '\\w*\\s+(text|jsonb|numeric|int|integer|real)', 'i').test(sql), false, col);
@@ -602,13 +603,21 @@ test('the pilot importer maps a spine record, its ref, audit and pin', async () 
       licenses: [{ number: 'HI-2', type: 'Home Improvement Registration', status: 'Active', firstIssued: '01/02/2019' }],
       qualifyingParties: [], websiteState: 'dead', websiteAudit: { url: 'https://quietoak.example.com', loads: false } }
   ];
-  const r = await importPilot({ spine, refs: { 'Tupelo Ridge Roofing LLC': 'TESTREF1' }, area: { id: 'youngsville', name: 'Youngsville' },
+  const r = await importPilot({ spine: { records: spine, pilotShortlist: { rows: [
+      { company: 'Tupelo Ridge Roofing LLC', rank: 1, top20: true }, { company: 'Quiet Oak Builders', rank: 2, top20: false }] } },
+    refs: { 'Tupelo Ridge Roofing LLC': 'TESTREF1' }, area: { id: 'youngsville', name: 'Youngsville' },
     run: { id: 'run-test', label: 'Test', startedAt: '2026-09-24T00:00:00Z' }, store,
+    sites: [{ website: 'https://tupeloridge.example.com', skipped: true, blocked: true, status: 403 }],
     geocode: async a => /12 Main/.test(a) ? { lat: 30.2, lng: -92.0, source: 'census' } : null });
-  assert.deepStrictEqual(r, { prospects: 2, pinned: 1 });
+  assert.deepStrictEqual(r, { prospects: 2, pinned: 1, selected: 1, audits: 2 });
   const s = store._snapshot();
   const a = s.prospects.find(p => p.id === 'TESTREF1');
   assert.strictEqual(a.selected, true);
+  assert.strictEqual(a.rank, 1);
+  assert.strictEqual(a.status, 'not_contacted');
+  assert.strictEqual(a.placeId, undefined, 'no Google data, not even a place_id');
+  assert.ok(s.events.some(e => e.prospectId === 'TESTREF1' && e.kind === 'selected'));
+  assert.ok(s.events.some(e => e.kind === 'run' && /2 found, 1 picked/.test(e.detail.text)));
   assert.strictEqual(a.firstIssued, '2026-03-15');
   assert.strictEqual(a.geocodeSource, 'census');
   assert.strictEqual(a.audit.state, 'blocked');
@@ -617,6 +626,53 @@ test('the pilot importer maps a spine record, its ref, audit and pin', async () 
   assert.strictEqual(b.selected, false);
   assert.strictEqual(b.audit.state, 'broken');
   assert.strictEqual(b.lat, undefined, 'no match, no pin');
+});
+
+test('the pilot importer takes the twenty from the shortlist, not from who holds a code', async () => {
+  const { importPilot } = require('../db/importers/pilot.js');
+  const store = createDemoStore({ now: new Date().toISOString(), areas: [], runs: [], prospects: [], events: [], notes: [] });
+  const rec = (company, number) => ({ company, mailingAddress: { street: '1 Invented Way', city: 'Bossier City', zip: '71111' },
+    licenses: [{ number, type: 'Residential License Certificate', status: 'Active', firstIssued: '01/02/2026' }], qualifyingParties: [] });
+  const spine = { records: [rec('Kestrel Lane Roofing LLC', 'R-1'), rec('Marmot Point Builders', 'R-2'), rec('Ocelot Row Fencing', 'R-3')],
+    pilotShortlist: { rows: [
+      { company: 'Marmot Point Builders', rank: 1, top20: true },
+      { company: 'Kestrel Lane Roofing LLC', rank: 21, top20: false },
+      { company: 'Ocelot Row Fencing', rank: null, top20: false, excluded: true }] } };
+  /* Kestrel was issued a code on an earlier pass and has since dropped out of the twenty */
+  const r = await importPilot({ spine, refs: { 'Kestrel Lane Roofing LLC': 'KESTREL2', 'Marmot Point Builders': 'MARMOT23' },
+    area: { id: 'bossier-caddo', name: 'Bossier / Caddo' }, store, geocodes: { '1 Invented Way, Bossier City, LA, 71111': { lat: 32.5, lng: -93.7, source: 'census' } } });
+  assert.strictEqual(r.selected, 1);
+  assert.strictEqual(r.pinned, 3, 'saved geocodes are used, no lookup');
+  const s = store._snapshot();
+  const k = s.prospects.find(p => p.id === 'KESTREL2');
+  assert.strictEqual(k.selected, false, 'a code alone is not a pick');
+  assert.strictEqual(k.rank, 21);
+  assert.strictEqual(s.prospects.find(p => p.id === 'MARMOT23').selected, true);
+  const o = s.prospects.find(p => p.id === 'LR3');
+  assert.strictEqual(o.selected, false);
+  assert.strictEqual(o.rank, null, 'an excluded company has no rank');
+});
+
+test('mock letters are paired by the shortlist, checked by name, stored as mock, and never sent', async () => {
+  const { importLetters, tableFromShortlist } = require('../db/importers/letters.js');
+  const store = createDemoStore({ now: new Date().toISOString(), areas: [], runs: [], prospects: [
+    { id: 'LR1', company: 'Kestrel Lane Roofing LLC' }, { id: 'LR2', company: 'Marmot Point Builders' }], events: [], notes: [] });
+  const rec = (company, number) => ({ company, licenses: [{ number }] });
+  const spine = { records: [rec('Kestrel Lane Roofing LLC', 'R-1'), rec('Marmot Point Builders', 'R-2')],
+    pilotShortlist: { rows: [{ company: 'Marmot Point Builders', rank: 1, top20: true }, { company: 'Kestrel Lane Roofing LLC', rank: 2, top20: true }] } };
+  const table = tableFromShortlist(spine, {});
+  assert.deepStrictEqual(table.map(t => t.ref), ['LR2', 'LR1']);
+  const page = n => '<section class="page"><p>a text from ' + n + ' straight away</p></section>';
+  const html = '<html><head><style>.page{}</style></head><body>' + page('Marmot Point Builders') + page('Kestrel Lane Roofing') + '</body></html>';
+  await assert.rejects(importLetters({ html, table, store, mock: true, sentAt: '2026-09-20T00:00:00.000Z' }), /never sent/);
+  const swapped = '<html><head></head><body>' + page('Kestrel Lane Roofing') + page('Marmot Point Builders') + '</body></html>';
+  await assert.rejects(importLetters({ html: swapped, table, store, mock: true }), /does not name the business/);
+  await importLetters({ html, table, store, mock: true, runId: 'mock-run' });
+  const l = await store.letterSource('LR1');
+  assert.strictEqual(l.letter.state, 'mock');
+  assert.strictEqual(store._snapshot().events.some(e => e.kind === 'letter_sent'), false);
+  const f = await store.funnel();
+  assert.strictEqual(f.letterSent, 0, 'a mock letter never counts as sent');
 });
 
 test('the letters, tracking and Twilio importers map invented fixtures', async () => {
@@ -653,4 +709,31 @@ test('importers refuse to run from the command line without a database and --con
   try { execFileSync(process.execPath, [path.join(__dirname, '..', 'db', 'importers', 'tracking.js'), 'x'], { env, stdio: 'pipe' }); }
   catch (e) { err = e; }
   assert.ok(err && /DATABASE_URL/.test(String(err.stderr)));
+});
+
+/* ---------- the database door ---------- */
+
+test('migrations split into plain statements, BEGIN and COMMIT left to the transaction', () => {
+  const { statementsOf } = require('../db/migrate.js');
+  const stmts = statementsOf(fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '002_real_data.sql'), 'utf8'));
+  assert.ok(stmts.length >= 4);
+  assert.ok(stmts.every(x => !/^(BEGIN|COMMIT)$/i.test(x) && !x.includes(';')));
+  assert.ok(stmts.some(x => /state IN \('draft','sent','mock'\)/.test(x)));
+});
+
+test('the Neon HTTPS client sends bound parameters and never leaks the connection string', async () => {
+  const { createNeonHttpPool } = require('../db/neon-http.js');
+  const url = 'postgresql://user:s3cret@ep-invented-123.us-east-1.aws.neon.tech/db?sslmode=require';
+  const seen = [];
+  const ok = createNeonHttpPool(url, { fetchImpl: async (u, init) => { seen.push({ u, init });
+    return { ok: true, status: 200, text: async () => JSON.stringify({ rows: [{ n: 1 }], rowCount: 1 }) }; } });
+  const r = await ok.query('SELECT $1::int AS n, $2::jsonb AS d', [1, { a: 1 }]);
+  assert.deepStrictEqual(r.rows, [{ n: 1 }]);
+  assert.strictEqual(seen[0].u, 'https://ep-invented-123.us-east-1.aws.neon.tech/sql');
+  const body = JSON.parse(seen[0].init.body);
+  assert.strictEqual(body.query, 'SELECT $1::int AS n, $2::jsonb AS d');
+  assert.deepStrictEqual(body.params, [1, '{"a":1}']);
+  const bad = createNeonHttpPool(url, { fetchImpl: async () => ({ ok: false, status: 400,
+    text: async () => JSON.stringify({ message: 'could not connect with ' + url }) }) });
+  await assert.rejects(bad.query('SELECT 1'), e => !e.message.includes('s3cret') && /\[connection string\]/.test(e.message));
 });
