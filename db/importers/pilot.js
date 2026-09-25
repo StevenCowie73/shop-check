@@ -51,7 +51,7 @@ function auditOf(rec, site = null) {
   else if (s === 'dead' && site && [401, 403, 429].includes(site.status)) state = 'blocked';
   else if (s === 'dead') state = 'broken';
   else if (s === 'not found') state = 'not_found';
-  else if (s === 'unknown' && ((site && site.blocked) || /block|403|forbidden|bot/i.test(a.skipNote || ''))) state = 'blocked';
+  else if (s === 'unknown' && ((site && site.blocked) || /blocked|403|forbidden|\bbot\b/i.test(a.skipNote || ''))) state = 'blocked';
   const finalUrl = (site && site.finalUrl) || a.finalUrl || '';
   const looked = site && !site.skipped;
   return {

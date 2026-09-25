@@ -631,6 +631,8 @@ test('the pilot importer maps a spine record, its ref, audit and pin', async () 
   assert.strictEqual(auditOf(old, { website: 'https://quietoak.example.com', loads: false, status: 403 }).state, 'blocked',
     'a 403 recorded as dead by an older audit is blocked, not broken');
   assert.strictEqual(auditOf(old, { website: 'https://quietoak.example.com', loads: false, status: 503 }).state, 'broken');
+  const robots = { websiteState: 'unknown', websiteAudit: { url: 'https://quietoak.example.com', skipped: true, skipNote: 'robots.txt timed out, so we left the site alone' } };
+  assert.strictEqual(auditOf(robots).state, 'unknown', 'robots.txt kept us out: we chose not to look, the site did not block us');
 });
 
 test('the pilot importer takes the twenty from the shortlist, not from who holds a code', async () => {
