@@ -24,11 +24,62 @@ const { liveTwilioFeed } = require('../lib/explorer/twilio-feed.js');
 const { pageHtml } = require('../lib/explorer/page.js');
 const { listingHtml } = require('./places.js');
 
-/* The same fields the prospect page asks for, and no more. */
+/* The prospect page's fields, plus Google's AI summaries, which only
+   Explorer shows. All of these sit on the same Places SKU as reviews, so
+   the summaries add nothing to the cost of the call. */
 const GOOGLE_FIELDS = [
   'id', 'displayName', 'rating', 'userRatingCount', 'googleMapsUri',
-  'regularOpeningHours', 'reviews'
+  'regularOpeningHours', 'reviews',
+  'reviewSummary', 'reviewSummary.reviewsUri', 'generativeSummary'
 ].join(',');
+
+/* ---------- Google's AI summaries ---------- */
+
+/* Shown exactly as Google's policy for AI-powered summaries asks
+   (developers.google.com/maps/documentation/places/web-service/policies):
+     - the full summary text, never shortened;
+     - Google's disclosure text ("Summarized with Gemini") directly under
+       it, unmodified;
+     - "About this summary" linking to how Google sources local listings;
+     - "Report summary" linking to the flag URL Google returned;
+     - for a review summary, the heading "Review summary" and a
+       "See reviews" link to the reviews on Google Maps;
+     - a line telling the reader to report content through that link.
+   A summary missing any piece Google requires us to show is left out
+   entirely rather than shown incompletely. Nothing here is stored. */
+const ABOUT_SUMMARY_URL = 'https://support.google.com/local-listings/answer/9851099';
+const REPORT_NOTE = 'To report content that should be removed from Google\u2019s services under applicable laws, ' +
+  'use \u201cReport summary\u201d.';
+
+const escHtml = v => String(v === undefined || v === null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const textOf = t => (t && typeof t === 'object' ? t.text : t) || '';
+const link = (href, label) => `<a href="${escHtml(href)}" rel="noopener nofollow" target="_blank">${escHtml(label)}</a>`;
+
+function aiSummaryBlock({ cls, heading, text, disclosure, flagUri, extraLinks = [] }) {
+  return `<section class="ai-summary ${cls}">
+  ${heading ? `<h3>${escHtml(heading)}</h3>` : ''}
+  <p class="ai-text">${escHtml(text)}</p>
+  <p class="ai-disclosure">${escHtml(disclosure)}</p>
+  <p class="ai-links">${[link(ABOUT_SUMMARY_URL, 'About this summary'), link(flagUri, 'Report summary'), ...extraLinks].join(' &middot; ')}</p>
+  <p class="ai-report-note">${escHtml(REPORT_NOTE)}</p>
+</section>`;
+}
+
+function summariesHtml(place) {
+  const out = [];
+  const g = place && place.generativeSummary;
+  if (g && textOf(g.overview) && textOf(g.disclosureText) && g.overviewFlagContentUri) {
+    out.push(aiSummaryBlock({ cls: 'place-summary', heading: 'Place summary', text: textOf(g.overview),
+      disclosure: textOf(g.disclosureText), flagUri: g.overviewFlagContentUri }));
+  }
+  const r = place && place.reviewSummary;
+  if (r && textOf(r.text) && textOf(r.disclosureText) && r.flagContentUri && r.reviewsUri) {
+    out.push(aiSummaryBlock({ cls: 'review-summary', heading: 'Review summary', text: textOf(r.text),
+      disclosure: textOf(r.disclosureText), flagUri: r.flagContentUri, extraLinks: [link(r.reviewsUri, 'See reviews')] }));
+  }
+  return out.join('\n');
+}
 
 const ID = /^[A-Za-z0-9-]{2,40}$/;
 const NOTE_MAX = 500;
@@ -93,7 +144,8 @@ function draftLetter(p, demo) {
 function makeHandler(deps = {}) {
   const env = deps.env || process.env;
   const storeOf = () => deps.store || getStore(env);
-  const placeDetails = deps.placeDetails || ((id, key, opts) => require('../finder/lib/places.js').placeDetails(id, key, opts));
+  /* placeDetails(apiKey, placeId, opts): the key first, as in finder/lib/places.js. */
+  const placeDetails = deps.placeDetails || ((key, id, opts) => require('../finder/lib/places.js').placeDetails(key, id, opts));
   const twilioFeed = deps.twilioFeed || liveTwilioFeed;
 
   const actions = {
@@ -107,6 +159,10 @@ function makeHandler(deps = {}) {
       const merged = feed.concat(live).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60);
       return {
         mode: store.mode, areas, funnel, feed: merged,
+        /* The Maps JavaScript API browser key, restricted in Google Cloud
+           to this site and to that one API. Handed over only after the
+           password; null until it is set, and the map screen says so. */
+        mapsKey: env.GOOGLE_MAPS_BROWSER_KEY || null,
         chips: Object.entries(CHIPS).map(([id, c]) => ({ id, label: c.label })),
         labels: { status: STATUS_LABEL, website: WEBSITE_LABEL, licenceAge: LICENCE_AGES },
         statuses: STATUSES, websiteStates: WEBSITE_STATES
@@ -135,9 +191,9 @@ function makeHandler(deps = {}) {
       const key = env.GOOGLE_PLACES_API_KEY;
       if (!key) return { ok: false, reason: 'not configured' };
       try {
-        const place = await placeDetails(placeId, key, { fieldMask: GOOGLE_FIELDS, maxRetries: 1 });
+        const place = await placeDetails(key, placeId, { fieldMask: GOOGLE_FIELDS, maxRetries: 1 });
         if (!place) return { ok: false, reason: 'no listing' };
-        return { ok: true, html: listingHtml(place) };
+        return { ok: true, html: summariesHtml(place) + '\n' + listingHtml(place) };
       } catch (e) {
         console.error('explorer: places lookup failed');
         return { ok: false, reason: 'lookup failed' };
@@ -176,6 +232,9 @@ function makeHandler(deps = {}) {
     if (!action && req.method === 'GET') {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      /* Google checks a browser key against the page's origin, which the
+         site-wide no-referrer policy would hide. Origin only, never path. */
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
       res.end(pageHtml());
       return;
     }
@@ -207,3 +266,5 @@ function makeHandler(deps = {}) {
 
 module.exports = makeHandler();
 module.exports.makeHandler = makeHandler;
+module.exports.summariesHtml = summariesHtml;
+module.exports.GOOGLE_FIELDS = GOOGLE_FIELDS;

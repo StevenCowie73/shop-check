@@ -212,11 +212,23 @@ const STUB_PLACE = {
     { rating: 4, relativePublishTimeDescription: 'a year ago', text: { text: 'First would be wrong.' },
       authorAttribution: { displayName: 'B. Reviewer', uri: 'https://maps.google.com/contrib/2' },
       googleMapsUri: 'https://maps.google.com/review/2' }
-  ]
+  ],
+  generativeSummary: {
+    overview: { text: 'Roofing crew doing repairs and full replacements, with free estimates and storm work.', languageCode: 'en-US' },
+    overviewFlagContentUri: 'https://www.google.com/local/review/rap/report?postId=PLACEFLAG',
+    disclosureText: { text: 'Summarized with Gemini', languageCode: 'en-US' }
+  },
+  reviewSummary: {
+    text: { text: 'People say this roofer shows up on time and cleans up after the job. They highlight fair prices, ' +
+      'clear quotes and quick storm repairs, though a few mention slow replies in busy weeks. REVIEWSUMMARYEND', languageCode: 'en-US' },
+    flagContentUri: 'https://www.google.com/local/review/rap/report?postId=REVIEWFLAG',
+    disclosureText: { text: 'Summarized with Gemini', languageCode: 'en-US' },
+    reviewsUri: 'https://www.google.com/maps/place//data=REVIEWSURI'
+  }
 };
 
 async function withPlaceId() {
-  const env = setup({ env: { GOOGLE_PLACES_API_KEY: 'k' }, placeDetails: async (id, key, opts) => {
+  const env = setup({ env: { GOOGLE_PLACES_API_KEY: 'k' }, placeDetails: async (key, id, opts) => {
     env.calls.push({ id, opts });
     return JSON.parse(JSON.stringify(STUB_PLACE));
   } });
@@ -274,7 +286,8 @@ test('nothing Google returns is written to the store', async () => {
   await env.call('/explorer?action=business&id=' + env.id);
   const after = JSON.stringify(env.store._snapshot());
   assert.strictEqual(after, before, 'the store is byte-for-byte unchanged');
-  for (const s of ['Second in the list', 'A. Reviewer', '4.6', 'Monday: 7:00', 'lh3.googleusercontent']) {
+  for (const s of ['Second in the list', 'A. Reviewer', '4.6', 'Monday: 7:00', 'lh3.googleusercontent',
+    'REVIEWSUMMARYEND', 'free estimates and storm work', 'REVIEWFLAG', 'PLACEFLAG', 'REVIEWSURI', 'Summarized with Gemini']) {
     assert.strictEqual(after.includes(s), false, s);
   }
 });
@@ -372,15 +385,120 @@ test('pins carry a status for every business with a location, and filter by area
   assert.ok(y.length > 0 && y.length < 25 && y.every(p => p.town === 'Youngsville'));
 });
 
-test('the map is Leaflet on OpenStreetMap, credited, and labelled as the licence address', async () => {
+test('the map is Google’s: no Leaflet or OpenStreetMap anywhere in Explorer', async () => {
   const { handler } = setup();
   const res = fakeRes();
   await handler(fakeReq('/explorer'), res);
-  assert.match(res.body, /cdnjs\.cloudflare\.com\/ajax\/libs\/leaflet\//);
-  assert.match(res.body, /tile\.openstreetmap\.org/);
-  assert.match(res.body, /OpenStreetMap<\/a> contributors/);
-  assert.match(res.body, /mailing address on the state licence, geocoded with the US Census Geocoder/);
-  assert.strictEqual(/maps\.googleapis\.com\/maps\/api\/js/.test(res.body), false, 'not Google Maps');
+  const html = res.body;
+  assert.match(html, /https:\/\/maps\.googleapis\.com\/maps\/api\/js/);
+  assert.match(html, /new google\.maps\.Map\(/);
+  assert.match(html, /mailing address on the state licence, geocoded with the US Census Geocoder/);
+  const everything = html + fs.readFileSync(path.join(__dirname, '..', 'api', 'explorer.js'), 'utf8') +
+    fs.readdirSync(path.join(__dirname, '..', 'lib', 'explorer'))
+      .map(f => fs.readFileSync(path.join(__dirname, '..', 'lib', 'explorer', f), 'utf8')).join('\n');
+  for (const banned of [/leaflet/i, /openstreetmap/i, /tile\.osm/i, /\bL\.map\(/, /\bOSM\b/]) {
+    assert.strictEqual(banned.test(everything), false, 'Explorer still mentions ' + banned);
+  }
+});
+
+test('the map key is handed over only after the password, and its absence is said plainly', async () => {
+  const { handler } = setup();
+  const shell = fakeRes();
+  await handler(fakeReq('/explorer'), shell);
+  assert.ok(shell.body.includes('Map key not set'), 'the map screen says so when there is no key');
+  assert.strictEqual(shell.headers['referrer-policy'], 'strict-origin-when-cross-origin');
+  assert.match(shell.body, /<meta name="referrer" content="strict-origin-when-cross-origin">/);
+
+  const none = (await setup().call('/explorer?action=bootstrap')).json();
+  assert.strictEqual(none.mapsKey, null);
+
+  const withKey = setup({ env: { GOOGLE_MAPS_BROWSER_KEY: 'AIzaBrowserKeyForTest' } });
+  assert.strictEqual((await withKey.call('/explorer?action=bootstrap')).json().mapsKey, 'AIzaBrowserKeyForTest');
+  const s2 = fakeRes();
+  await withKey.handler(fakeReq('/explorer'), s2);
+  assert.strictEqual(s2.body.includes('AIzaBrowserKeyForTest'), false, 'never in the unauthenticated shell');
+  const denied = fakeRes();
+  await withKey.handler(fakeReq('/explorer?action=bootstrap', { password: 'wrong' }), denied);
+  assert.strictEqual(denied.statusCode, 401);
+  assert.strictEqual(denied.body.includes('AIzaBrowserKeyForTest'), false);
+});
+
+/* ---------- Google's AI summaries, Explorer only ---------- */
+
+const ABOUT = 'https://support.google.com/local-listings/answer/9851099';
+
+test('Explorer asks Google for the AI summaries; the prospect page does not', async () => {
+  const { GOOGLE_FIELDS } = require('../api/explorer.js');
+  for (const f of ['reviewSummary', 'reviewSummary.reviewsUri', 'generativeSummary', 'reviews']) {
+    assert.ok(GOOGLE_FIELDS.split(',').includes(f), f);
+  }
+  const { call, id, calls } = await withPlaceId();
+  await call('/explorer?action=google&id=' + id);
+  assert.strictEqual(calls[0].opts.fieldMask, GOOGLE_FIELDS);
+  const prospectRoute = fs.readFileSync(path.join(__dirname, '..', 'api', 'places.js'), 'utf8');
+  assert.strictEqual(/reviewSummary|generativeSummary/.test(prospectRoute), false, 'prospect pages unchanged');
+});
+
+test('the review summary is shown exactly as Google’s AI-summary policy asks, in order', async () => {
+  const { call, id } = await withPlaceId();
+  const html = (await call('/explorer?action=google&id=' + id)).json().html;
+  const block = html.slice(html.indexOf('<section class="ai-summary review-summary">'));
+  const at = s => block.indexOf(s);
+  const heading = at('<h3>Review summary</h3>');
+  const text = at(STUB_PLACE.reviewSummary.text.text);
+  const disclosure = at('<p class="ai-disclosure">Summarized with Gemini</p>');
+  const about = at('href="' + ABOUT + '"');
+  const report = at('href="https://www.google.com/local/review/rap/report?postId=REVIEWFLAG"');
+  const see = at('href="https://www.google.com/maps/place//data=REVIEWSURI"');
+  const note = at('To report content that should be removed from Google’s services under applicable laws, use “Report summary”.');
+  for (const [k, v] of Object.entries({ heading, text, disclosure, about, report, see, note })) assert.ok(v >= 0, k + ' is present');
+  assert.ok(heading < text && text < disclosure && disclosure < about && about < report && report < see && see < note, 'in that order');
+  /* the disclosure is the very next thing after the text */
+  assert.match(block, /<p class="ai-text">[^<]*REVIEWSUMMARYEND<\/p>\s*<p class="ai-disclosure">Summarized with Gemini<\/p>/);
+  assert.match(block, />About this summary<\/a>/);
+  assert.match(block, />Report summary<\/a>/);
+  assert.match(block, />See reviews<\/a>/);
+  assert.ok(block.includes(STUB_PLACE.reviewSummary.text.text), 'the full text, not shortened');
+});
+
+test('the place summary is shown with its disclosure, About and Report links', async () => {
+  const { call, id } = await withPlaceId();
+  const html = (await call('/explorer?action=google&id=' + id)).json().html;
+  const block = html.slice(html.indexOf('<section class="ai-summary place-summary">'), html.indexOf('</section>') + 10);
+  assert.ok(block.startsWith('<section class="ai-summary place-summary">'));
+  assert.match(block, /<p class="ai-text">Roofing crew doing repairs and full replacements, with free estimates and storm work\.<\/p>\s*<p class="ai-disclosure">Summarized with Gemini<\/p>/);
+  assert.ok(block.includes('href="' + ABOUT + '"') && block.includes('>About this summary</a>'));
+  assert.ok(block.includes('postId=PLACEFLAG') && block.includes('>Report summary</a>'));
+  assert.ok(block.includes('use “Report summary”'));
+  assert.strictEqual(block.includes('See reviews'), false, 'See reviews belongs to the review summary only');
+  /* the listing itself still follows, with Google's logo */
+  assert.ok(html.indexOf('ai-summary') < html.indexOf(GOOGLE_LOGO));
+});
+
+test('no summary from Google, or one missing a required piece, shows nothing', async () => {
+  const { summariesHtml } = require('../api/explorer.js');
+  assert.strictEqual(summariesHtml({}), '');
+  assert.strictEqual(summariesHtml({ reviewSummary: { text: { text: 'x' }, disclosureText: { text: 'Summarized with Gemini' }, flagContentUri: 'https://f' } }), '',
+    'no reviewsUri, no review summary');
+  assert.strictEqual(summariesHtml({ reviewSummary: { text: { text: 'x' }, flagContentUri: 'https://f', reviewsUri: 'https://r' } }), '',
+    'no disclosure, no review summary');
+  assert.strictEqual(summariesHtml({ generativeSummary: { overview: { text: 'x' }, disclosureText: { text: 'Summarized with Gemini' } } }), '',
+    'no flag link, no place summary');
+  const env = await withPlaceId();
+  const plain = { ...STUB_PLACE }; delete plain.reviewSummary; delete plain.generativeSummary;
+  const e2 = setup({ env: { GOOGLE_PLACES_API_KEY: 'k' }, placeDetails: async () => plain });
+  await e2.store.upsertProspect({ id: env.id, placeId: 'ChIJstub' });
+  const html = (await e2.call('/explorer?action=google&id=' + env.id)).json().html;
+  assert.strictEqual(html.includes('ai-summary'), false);
+  assert.strictEqual(html.includes('Summarized with Gemini'), false);
+});
+
+test('summary text is escaped, never treated as markup', () => {
+  const { summariesHtml } = require('../api/explorer.js');
+  const html = summariesHtml({ reviewSummary: { text: { text: '<img src=x onerror=alert(1)>' }, disclosureText: { text: 'Summarized with Gemini' },
+    flagContentUri: 'https://f"><script>', reviewsUri: 'https://r' } });
+  assert.strictEqual(html.includes('<img'), false);
+  assert.strictEqual(html.includes('"><script>'), false);
 });
 
 test('the funnel shows counts, and a percentage only once the step before reaches 100', async () => {

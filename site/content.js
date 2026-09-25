@@ -228,8 +228,13 @@ const PRIVACY = {
         'Our prospect pages, and our own internal tools, can show a ' +
         'business’s Google listing: its rating, number of reviews, opening ' +
         'hours and reviews with their authors, with a link to Google Maps. ' +
-        'This is fetched from Google each time the page is opened and is not ' +
-        'stored. The only thing we keep is Google’s ID for the listing.',
+        'Our internal tools can also show the summaries Google generates of ' +
+        'the business and of its reviews, marked “Summarized with Gemini”, ' +
+        'with Google’s links to report a summary or read the reviews. Our ' +
+        'internal map is a Google map.',
+        'All of this is fetched from Google each time the page is opened. ' +
+        'None of it is stored, and none of it is passed to any other tool or ' +
+        'service. The only thing we keep is Google’s ID for the listing.',
         'Our pages also load fonts, the Google Maps logo and reviewers’ ' +
         'photos from Google’s servers, so Google receives those requests. ' +
         'Your use of Google Maps features is subject to Google’s Privacy ' +
@@ -245,7 +250,7 @@ const PRIVACY = {
       paragraphs: [
         'We use a small number of ordinary suppliers: a website host, a ' +
         'telephony provider that carries the calls and texts, an email ' +
-        'provider, Google (for business listings), a web search service ' +
+        'provider, Google (for business listings and maps), a web search service ' +
         '(given a business name and town), a text-analysis service we use to ' +
         'read public business information, the US Census Bureau’s address ' +
         'lookup (given a licence mailing address, to place it on our own ' +

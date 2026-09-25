@@ -107,7 +107,9 @@ async function placeDetails(apiKey, placeId, opts) {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let status, text, body = null;
     try {
-      const res = await fetch(DETAILS_URL + encodeURIComponent(placeId), {
+      /* English, so AI summaries come back in the one language Google
+         offers them in for US places. */
+      const res = await fetch(DETAILS_URL + encodeURIComponent(placeId) + '?languageCode=en', {
         headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': fieldMask },
         signal: controller.signal
       });

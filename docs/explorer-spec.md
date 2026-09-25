@@ -25,8 +25,12 @@ arrives when the database exists.
    - Quick filter chips that jump to the List: No website, Broken site, New
      licence (12 months), Not contacted, Replied.
 2. **Map**
-   - Leaflet + OpenStreetMap tiles with proper OSM attribution. Not Google
-     Maps.
+   - A Google map (Maps JavaScript API). Changed on 25 September 2026 from
+     the original non-Google map: Google's terms do not allow Places content
+     (the business screen's listing) in an app that also has a non-Google
+     map. Browser key in `GOOGLE_MAPS_BROWSER_KEY`, restricted to this site
+     and the Maps JavaScript API; until it is set the screen says "Map key
+     not set". Pins are still our own Census-geocoded licence addresses.
    - One pin per business, coloured by status: not contacted, letter sent,
      page opened, replied, client, closed. Legend.
    - Area filter (Bossier/Caddo, Youngsville, later others). Tap a pin →
@@ -106,3 +110,11 @@ arrives when the database exists.
   Census Geocoder and the coordinates stored with `geocode_source = 'census'`.
 - Live Twilio calls and texts appear in the feed in demo mode too, marked
   "live", because they are the one real thing Explorer can already show.
+- **Google's AI summaries (Explorer only).** The business screen asks Places
+  for `reviewSummary`, `reviewSummary.reviewsUri` and `generativeSummary`
+  (same SKU as reviews, so no extra cost) and shows them exactly as Google's
+  AI-summary policy requires: heading "Review summary", full text, the
+  disclosure text directly underneath, "About this summary", "Report
+  summary", "See reviews", and the line about reporting content. A summary
+  missing a required piece is not shown. Display only; never stored or sent
+  to a model. The prospect pages do not ask for them.

@@ -150,7 +150,9 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const place = await placeDetails(prospect.placeId, key, { fieldMask: FIELDS, maxRetries: 1 });
+    /* placeDetails(apiKey, placeId, opts): the key first. These were once
+       the other way round, which sent the place id as the key. */
+    const place = await placeDetails(key, prospect.placeId, { fieldMask: FIELDS, maxRetries: 1 });
     if (!place) {
       res.statusCode = 200;
       res.end(JSON.stringify({ ok: false, reason: 'no listing' }));
