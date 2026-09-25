@@ -13,8 +13,11 @@ const full = JSON.parse(fs.readFileSync(spineFile, 'utf8'));
 const spine = full.records;
 
 /* ---- fold the Astra answers into the records ---- */
-const astra = JSON.parse(fs.readFileSync(P.astraWebsites(1), 'utf8'));
-const audit = JSON.parse(fs.readFileSync(P.astraAuditJson(1), 'utf8'));
+/* A round that has not run yet is "none yet", not a failure: the shortlist
+   can be built before Astra has been asked anything. */
+const readIf = (file, empty) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : empty;
+const astra = readIf(P.astraWebsites(1), { results: [], spent: 0 });
+const audit = readIf(P.astraAuditJson(1), { sites: [] });
 const auditByUrl = new Map(audit.sites.map(s => [s.website, s]));
 
 const byCompany = new Map(spine.map(r => [r.company, r]));
@@ -30,6 +33,9 @@ for (const a of astra.results) {
     costUsd: a.cost === undefined ? null : Number(a.cost.toFixed(4))
   };
   if (a.website === 'not found') {
+    /* Only a search that ran and came back empty may say "not found". A
+       lookup that errored searched nothing; its state stays unknown. */
+    if (a.error) continue;
     rec.website = 'not found';
     rec.websiteState = 'not found';
     continue;
@@ -88,8 +94,9 @@ const rows = reranked.map((x, i) => {
     firstIssued: newest,
     qualifyingParties: rec.qualifyingParties,
     emailKind: rec.emailKind || 'none',
-    websiteState: rec.websiteState || 'not found',
-    website: rec.website || rec.websiteCandidate || 'not found',
+    /* Never searched is unknown, and unknown makes no claim in a letter. */
+    websiteState: rec.websiteState || 'unknown',
+    website: rec.website || rec.websiteCandidate || '',
     websiteFoundBy: rec.astra ? 'astra' : (rec.websiteCandidate ? 'company-domain email' : null),
     usableFinding: usableFinding(rec),
     score: x.score,
@@ -107,7 +114,8 @@ full.pilotShortlist = {
     costUsd: Number(astra.spent.toFixed(2)),
     websitesFound: astra.results.filter(r => r.website !== 'not found').length,
     rejectedOnReview: astra.results.filter(r => r.rejected).length,
-    notFound: astra.results.filter(r => r.website === 'not found').length
+    notFound: astra.results.filter(r => r.website === 'not found' && !r.error).length,
+    errored: astra.results.filter(r => r.error).length
   },
   rows
 };

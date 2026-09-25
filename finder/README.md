@@ -34,8 +34,13 @@ of them fail, and the audit records perfectly live websites as dead. There is no
 error and no warning — the run simply finishes and lies to you. That happened
 here, twice, across two full audits.
 
-So `lib/http.js` installs undici's proxy dispatcher itself, at require time,
-whenever a proxy variable is present. That needs the `undici` package:
+So `lib/http.js`, whenever a proxy variable is present, uses undici's own
+`fetch` with undici's proxy dispatcher, and every request in `finder/` goes
+through it. It must be undici's own fetch: Node's built-in fetch driven by
+the npm undici dispatcher loses every response header over HTTP/2 — a 301
+arrives with no Location, the redirect is never followed, and a live site is
+recorded as "the server answered 301". That also happened here. It needs the
+`undici` package:
 
 ```
 npm install        # at the repo root

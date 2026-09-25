@@ -13,6 +13,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const P = require('./lib/paths.js');
+const AREA = require('./lib/area.js');
+const { isChain } = require('../lib/prospect.js');
 const DETAILS = P.lslbcDetails;
 const slug = key => crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
 
@@ -99,12 +101,19 @@ function parseDetail(html) {
 
 function main() {
   const idx = JSON.parse(fs.readFileSync(P.lslbcIndex, 'utf8'));
+  /* The walk only fetched the towns it was asked for; count against those,
+     not the whole parish, or every run with a town list looks unfinished. */
+  const rows = idx.wanted || idx.all;
   const out = [];
-  let missing = 0;
-  for (const row of idx.all) {
+  let missing = 0, otherZip = 0, chains = 0;
+  for (const row of rows) {
     const file = path.join(DETAILS, slug(row.key) + '.html');
     if (!fs.existsSync(file)) { missing++; continue; }
     const rec = parseDetail(fs.readFileSync(file, 'utf8'));
+    if (!AREA.wantZip(rec.mailingAddress.zip)) { otherZip++; continue; }
+    /* National chains and franchises are nobody Steven can help; the same
+       blocklist the Places finder uses. */
+    if (isChain(rec.company || '')) { chains++; continue; }
     out.push({
       searchedAs: row.listName,
       searchCity: row.listCity,
@@ -113,7 +122,9 @@ function main() {
     });
   }
   fs.writeFileSync(P.records, JSON.stringify(out, null, 1));
-  console.log('parsed ' + out.length + ' records, ' + missing + ' detail pages still missing');
+  console.log('parsed ' + out.length + ' records, ' + missing + ' detail pages still missing' +
+    (AREA.zips().length ? ', ' + otherZip + ' outside ' + AREA.zips().join('/') : '') +
+    ', ' + chains + ' chains left out');
   const noCompany = out.filter(r => !r.company).length;
   const noLicence = out.filter(r => !r.licenses.length).length;
   console.log('records with no company name: ' + noCompany + ', with no licence rows: ' + noLicence);

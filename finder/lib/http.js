@@ -11,15 +11,24 @@ const { sleep } = require('./env.js');
 
 /* Node's own fetch ignores HTTPS_PROXY unless the process was started with
    --use-env-proxy or NODE_USE_ENV_PROXY, and neither can be switched on once
-   the process is running. Where a proxy is named in the environment we install
-   undici's env-reading dispatcher instead, once, at require time.
+   the process is running. Where a proxy is named in the environment we use
+   undici's own fetch with undici's env-reading proxy dispatcher instead.
+
+   It has to be undici's own fetch, not Node's global fetch pointed at the
+   npm undici dispatcher. Node 22 bundles undici 6; the npm package is 8.
+   Mixed like that, a response over HTTP/2 through the proxy comes back with
+   no headers at all — a 301 with no Location, so the redirect is never
+   followed and a live website is recorded as "the server answered 301".
+   That happened on a real audit. Fetch and dispatcher now come from the same
+   undici, so they cannot disagree.
 
    When no proxy variable is set this does nothing at all, which is the case on
-   Vercel and on a plain laptop: their behaviour is exactly as before.
+   Vercel and on a plain laptop: Node's own fetch is used, exactly as before.
 
    If a proxy is named and undici is missing, we stop. Carrying on unproxied is
    the worst outcome available: the run finishes, looks fine, and quietly marks
    live websites dead. A refusal to start is cheap; a bad audit is not. */
+let fetchImpl = (...args) => globalThis.fetch(...args);
 (function useProxyFromEnvironment() {
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (!proxy) return;
@@ -31,8 +40,14 @@ const { sleep } = require('./env.js');
     console.error('Proxy detected but undici is not installed — run npm install at the repo root');
     process.exit(1);
   }
-  undici.setGlobalDispatcher(new undici.EnvHttpProxyAgent());
+  const agent = new undici.EnvHttpProxyAgent();
+  undici.setGlobalDispatcher(agent);
+  fetchImpl = (url, init) => undici.fetch(url, Object.assign({ dispatcher: agent }, init || {}));
 })();
+
+/* Every outbound request in finder/ goes through this, so the proxy rule
+   above holds everywhere: the audit, Places, the licence walk and Astra. */
+const fetch = (url, init) => fetchImpl(url, init);
 
 const BROWSER_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -177,4 +192,4 @@ async function withRetries(attempt, { tries = 4, waitMs = 1000, onRetry } = {}) 
   }
 }
 
-module.exports = { get, getJson, getText, readCapped, shortError, withRetries, RETRYABLE_STATUS, BROWSER_HEADERS };
+module.exports = { fetch, get, getJson, getText, readCapped, shortError, withRetries, RETRYABLE_STATUS, BROWSER_HEADERS };

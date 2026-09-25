@@ -13,7 +13,8 @@ const file = P.spine;
 const full = JSON.parse(fs.readFileSync(file, 'utf8'));
 const byCompany = new Map(full.records.map(r => [r.company, r]));
 
-const astra = JSON.parse(fs.readFileSync(P.astraWebsites(2), 'utf8'));
+/* Round 2 not run yet (or nothing to ask) is "none yet", not a failure. */
+const astra = fs.existsSync(P.astraWebsites(2)) ? JSON.parse(fs.readFileSync(P.astraWebsites(2), 'utf8')) : { results: [], spent: 0 };
 const auditFile = P.astraAuditJson(2);
 const audit = fs.existsSync(auditFile) ? JSON.parse(fs.readFileSync(auditFile, 'utf8')) : { sites: [] };
 const byUrl = new Map(audit.sites.map(s => [s.website, s]));
@@ -34,6 +35,8 @@ for (const a of astra.results) {
   };
   rec.needsAstra = false;
   if (a.website === 'not found') {
+    /* An errored lookup searched nothing: the state stays unknown. */
+    if (a.error) continue;
     rec.website = 'not found';
     rec.websiteState = 'not found';
     continue;
@@ -61,8 +64,9 @@ for (const row of live) {
   const s = scoreRecord(rec);
   row.score = s ? s.score : 0;
   row.reasons = s ? s.reasons : [];
-  row.websiteState = rec.websiteState || 'not found';
-  row.website = rec.website || rec.websiteCandidate || 'not found';
+  /* Never searched is unknown, and unknown makes no claim in a letter. */
+  row.websiteState = rec.websiteState || 'unknown';
+  row.website = rec.website || rec.websiteCandidate || '';
   row.websiteSource = rec.websiteAudit ? rec.websiteAudit.source : null;
   row.usableFinding = (rec.websiteAudit && rec.websiteAudit.siteScore !== null &&
     (row.websiteState === 'dead' || row.websiteState === 'poor'))

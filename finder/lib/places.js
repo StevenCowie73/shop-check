@@ -9,6 +9,8 @@
    error is scrubbed before it leaves here. */
 
 const { scrub, sleep } = require('./env.js');
+/* Through lib/http.js, so a proxy is honoured the same way as everywhere else. */
+const { fetch } = require('./http.js');
 
 const SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 const DETAILS_URL = 'https://places.googleapis.com/v1/places/';

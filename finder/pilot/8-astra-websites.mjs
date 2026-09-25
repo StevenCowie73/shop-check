@@ -13,7 +13,10 @@
 
 import fs from 'fs';
 import { createRequire } from 'module';
-const P = createRequire(import.meta.url)('./lib/paths.js');
+const require = createRequire(import.meta.url);
+const P = require('./lib/paths.js');
+/* Through lib/http.js, so a proxy is honoured the same way as everywhere else. */
+const { fetch } = require('../lib/http.js');
 
 const ROUND = process.env.PILOT_ASTRA_ROUND || '1';
 const RAW = P.astraRaw(ROUND);
@@ -28,6 +31,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 fs.mkdirSync(RAW, { recursive: true });
 fs.mkdirSync(P.at('astra'), { recursive: true });
+if (!fs.existsSync(TARGETS)) {
+  console.error('no ' + TARGETS + ' — run astra-targets.js ' + ROUND + ' first');
+  process.exit(1);
+}
 const targets = JSON.parse(fs.readFileSync(TARGETS, 'utf8'));
 
 const prompt = (name, city) => `Find the official website of this business, if it has one.
@@ -115,4 +122,13 @@ for (let i = 0; i < targets.length; i++) {
 
 fs.writeFileSync(RESULTS, JSON.stringify({ spent, results }, null, 1));
 console.error(`\nTOTAL SPEND: $${spent.toFixed(2)} over ${results.length} lookups`);
+
+/* Every website Astra named goes to the audit next (audit.js astra ROUND),
+   so write the list it reads. */
+const { csvCell } = require('../lib/csv.js');
+const found = results.filter(r => r.website !== 'not found');
+fs.mkdirSync(P.astraAuditDir(ROUND), { recursive: true });
+fs.writeFileSync(P.astraAuditCsv(ROUND), ['score,name,phone,website,place_id']
+  .concat(found.map(r => [0, r.company, '', r.website, ''].map(csvCell).join(','))).join('\r\n') + '\r\n');
+console.error(`${found.length} websites to audit: npm run pilot:astra-audit -- ${ROUND}`);
 console.error(`found: ${results.filter(r => r.website !== 'not found').length}, not found: ${results.filter(r => r.website === 'not found').length}`);

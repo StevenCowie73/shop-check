@@ -28,6 +28,9 @@ const { prospectUrl } = require('../../lib/refs.js');
 /* The texting disclosure under the number is the same line the /sms page
    quotes as "what the letter says", so both read it from one place. */
 const { LETTER_SMS_LINE } = require('../../lib/texting-copy.js');
+/* Where the letter says Steven is: "Bossier City" for the pilot parishes,
+   exactly as before, and "Louisiana" anywhere else (lib/area.js). */
+const { hereIn } = require('./lib/area.js');
 
 /* The letterhead: the ColdenJames wordmark, drawn as outlines so it prints
    the same whatever fonts the renderer has. The address is the one thing
@@ -108,7 +111,7 @@ function letterHtml(row, rec, code) {
   <p class="date">${esc(date)}</p>
   <p class="greeting">${esc(greeting)}</p>
   <p>When you're on a job and the phone rings, you can't always get to it. Most people who get voicemail don't leave a message. They call the next ${esc(trade.noun)}.</p>
-  <p>I'm Steven, here in Bossier City. I set up a simple fix for that. When you miss a call, the caller gets a text from ${esc(biz)} straight away, so they know you'll get back to them. You reply when you're off the job.</p>
+  <p>I'm Steven, here in ${esc(hereIn(rec))}. I set up a simple fix for that. When you miss a call, the caller gets a text from ${esc(biz)} straight away, so they know you'll get back to them. You reply when you're off the job.</p>
   <p>You can try it on me. Call the number at the bottom of this letter, and if I can't pick up, you'll get the text yourself.</p>
   ${website.text ? `<p>${esc(website.text)}</p>` : ''}
   <p>${esc(pageLine)}</p>

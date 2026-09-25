@@ -15,7 +15,8 @@
    nothing to check and it passes, so a fresh clone is never blocked.
 
    Run over the staged change:   node scripts/check-private-names.js
-   Run over everything tracked:  node scripts/check-private-names.js --all */
+   Run over everything tracked:  node scripts/check-private-names.js --all
+   Run over particular files:    node scripts/check-private-names.js --files a.js,b.md */
 
 const fs = require('fs');
 const path = require('path');
@@ -23,9 +24,17 @@ const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const ALL = process.argv.includes('--all');
+const FILES_ARG = (() => {
+  const i = process.argv.indexOf('--files');
+  return i === -1 ? null : String(process.argv[i + 1] || '').split(',').filter(Boolean);
+})();
 const QUIET = process.argv.includes('--quiet');
 
-/* Where prospect data lives. All git-ignored; any or none may be present. */
+/* Where prospect data lives. All git-ignored; any or none may be present.
+   These fixed files, plus everything the pilot writes for any area: every
+   folder under finder/pilot/out/, and PILOT_OUT_DIR wherever it points.
+   A run for a new area writes to its own folder, and a check that only
+   knew the pilot's first layout would see none of it — which happened. */
 const SOURCES = [
   'finder/out/prospects.csv',
   'finder/out/judgments.json',
@@ -116,6 +125,10 @@ function harvestFile(rel, file) {
       remember(o && o.name);
       if (o && o.owner) remember(o.owner.name);
     }
+  } else if (/(^|\/)astra\/(targets|websites-round\d+)\.json$/.test(rel) || /(^|\/)targets\.json$/.test(rel)) {
+    /* what Astra was asked about, and what it answered */
+    const list = Array.isArray(data) ? data : (data.results || []);
+    for (const r of list) remember(r && r.company);
   } else if (rel.endsWith('exclusions.json') || rel.endsWith('refs.json')) {
     /* both are keyed by company name */
     for (const company of Object.keys(data)) remember(company);
@@ -130,10 +143,30 @@ function harvestFile(rel, file) {
   }
 }
 
+/* The files a pilot run writes that hold a business or person's name. */
+const NAME_FILE = /(^|\/)(records[\w.-]*\.json|spine\.json|exclusions\.json|refs\.json|targets\.json|websites-round\d+\.json|prospects\.csv)$/;
+
+function walk(dir, out) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (err) { return; }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'details' && e.name !== 'fonts') walk(full, out); }
+    else if (NAME_FILE.test(full.split(path.sep).join('/'))) out.push(full);
+  }
+}
+
+function sourceFiles() {
+  const files = SOURCES.map(rel => path.join(ROOT, rel)).filter(f => fs.existsSync(f));
+  const roots = [path.join(ROOT, 'finder', 'pilot', 'out')];
+  if (process.env.PILOT_OUT_DIR) roots.push(path.resolve(process.env.PILOT_OUT_DIR));
+  for (const r of roots) walk(r, files);
+  return [...new Set(files)];
+}
+
 let sourcesFound = 0;
-for (const rel of SOURCES) {
-  const file = path.join(ROOT, rel);
-  if (!fs.existsSync(file)) continue;
+for (const file of sourceFiles()) {
+  const rel = path.relative(ROOT, file).split(path.sep).join('/');
   sourcesFound++;
   try {
     if (file.endsWith('.csv')) readCsvColumn(file, 'name');
@@ -158,6 +191,7 @@ function stagedUnderOut(files) {
 }
 
 function filesToCheck() {
+  if (FILES_ARG) return FILES_ARG.map(f => path.relative(ROOT, path.resolve(f)).split(path.sep).join('/'));
   const cmd = ALL
     ? 'git ls-files'
     : 'git diff --cached --name-only --diff-filter=ACM';
@@ -171,7 +205,7 @@ const ALLOWED = [/^scripts\/check-private-names\.js$/, /\.example\.json$/];
 
 const staged = filesToCheck();
 
-const underOut = ALL ? [] : stagedUnderOut(staged);
+const underOut = (ALL || FILES_ARG) ? [] : stagedUnderOut(staged);
 if (underOut.length) {
   console.error('');
   console.error('  COMMIT REFUSED — a file under an out/ directory is staged.');
@@ -210,7 +244,8 @@ for (const rel of staged) {
 if (!hits.length) {
   if (!QUIET) {
     console.log('check-private-names: ' + names.size + ' private names checked against ' +
-      (ALL ? 'every tracked file' : 'the staged change') + ' — clean');
+      (FILES_ARG ? 'the named files' : ALL ? 'every tracked file' : 'the staged change') +
+      ' (from ' + sourcesFound + ' private data files) — clean');
   }
   process.exit(0);
 }

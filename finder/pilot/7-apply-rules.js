@@ -73,10 +73,12 @@ for (const row of full.pilotShortlist.rows) {
   delete rec.websiteCandidate;
   delete rec.websiteAudit;
   delete rec.website;
-  row.websiteState = 'not found';
-  row.website = 'not found';
+  /* The domain was never theirs, so we have not looked for their website
+     yet: unknown until Astra round 2 has actually searched. */
+  row.websiteState = 'unknown';
+  row.website = '';
   row.usableFinding = '';
-  rec.websiteState = 'not found';
+  rec.websiteState = 'unknown';
   rec.needsAstra = true;
 }
 

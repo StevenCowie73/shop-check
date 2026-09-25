@@ -46,7 +46,7 @@ function main() {
   console.log('email kinds:', JSON.stringify(kinds));
   console.log('distinct company domains to audit: ' + rows.length);
   console.log('\nnow run the audit:');
-  console.log('  SHOP_CHECK_OUT_DIR=' + P.auditIn + ' node ../check-sites.js');
+  console.log('  npm run pilot:audit');
 }
 
 main();

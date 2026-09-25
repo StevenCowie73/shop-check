@@ -1,8 +1,10 @@
 'use strict';
 
 /* Step 1. Walks every Residential (25) and Home Improvement (27) licence in
-   Caddo (2098) and Bossier (1815) on the LSLBC public ARLS, and saves
-   each detail page to disk.
+   the run's parishes on the LSLBC public ARLS, and saves each detail page
+   to disk. The parishes (default Caddo 2098 and Bossier 1815) and an
+   optional town list come from lib/area.js; with a town list, only those
+   towns' detail pages are fetched.
 
    Manners: one request at a time, at least three seconds apart, never in
    parallel. This is a public register run by a small state board, not a CDN.
@@ -23,6 +25,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const P = require('./lib/paths.js');
+const AREA = require('./lib/area.js');
+/* Through lib/http.js, so a proxy is honoured the same way as everywhere else. */
+const { fetch } = require('../lib/http.js');
 const DETAILS = P.lslbcDetails;
 fs.mkdirSync(DETAILS, { recursive: true });
 const BASE = 'https://arlspublic.lslbc.louisiana.gov';
@@ -31,7 +36,7 @@ const GAP_MS = 3200;          /* the floor the task sets, plus a little */
 const BACKOFF_START_MS = 60000;
 const THROTTLE_GIVE_UP_MS = 10 * 60 * 1000;
 
-const PARISHES = { 2098: 'Caddo', 1815: 'Bossier' };
+const PARISHES = AREA.parishes();
 const TYPES = { 25: 'Residential License Certificate', 27: 'Home Improvement Registration' };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -109,9 +114,14 @@ async function main() {
       await sleep(GAP_MS);
     }
   }
-  const all = [...index.values()];
-  fs.writeFileSync(P.lslbcIndex, JSON.stringify({ listCounts, all }, null, 1));
-  log('unique licence holders across the four lists: ' + all.length);
+  const everyone = [...index.values()];
+  /* Only the towns this run is about get their detail pages fetched. */
+  const all = everyone.filter(r => AREA.wantTown(r.listCity));
+  fs.writeFileSync(P.lslbcIndex, JSON.stringify({
+    listCounts, towns: AREA.towns(), all: everyone, wanted: all
+  }, null, 1));
+  log('unique licence holders across the lists: ' + everyone.length +
+      (AREA.towns().length ? '; in ' + AREA.towns().join('/') + ': ' + all.length : ''));
 
   /* ---- 2. the detail pages, resumably ----------------------------- */
   let fetched = 0, skipped = 0;
