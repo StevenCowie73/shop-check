@@ -451,6 +451,38 @@ test('the map opens on Bossier / Caddo unless the link names an area', () => {
   assert.strictEqual(without(q('')), '', 'falls back to all areas where there is no Bossier / Caddo');
 });
 
+test('the map opens on the area\'s own businesses, ignoring pins outside Louisiana and far outliers', () => {
+  const { mapFit } = require('../lib/explorer/map-fit.js');
+  const LA = { south: 28.9, west: -94.05, north: 33.02, east: -88.8 };
+  /* invented pins: a cluster around Bossier City and Shreveport, one mailing
+     address in Wisconsin, one in Tennessee, one far south in Louisiana */
+  const cluster = [[32.52, -93.73], [32.50, -93.75], [32.45, -93.70], [32.60, -93.60], [32.55, -93.65], [32.62, -93.81]]
+    .map(([lat, lng], i) => ({ id: 'P' + i, lat, lng }));
+  const pins = cluster.concat([{ id: 'WI', lat: 44.5, lng: -88.0 }, { id: 'TN', lat: 35.1, lng: -85.3 }, { id: 'FAR', lat: 29.95, lng: -90.07 }]);
+  const f = mapFit(pins, 'bossier-caddo');
+  assert.deepStrictEqual(f.bounds, { south: 32.45, west: -93.81, north: 32.62, east: -93.6 }, 'only the cluster is fitted');
+  assert.deepStrictEqual(mapFit(pins, ''), { bounds: LA }, '"All areas" fits Louisiana');
+  assert.deepStrictEqual(mapFit([{ lat: 44.5, lng: -88 }], 'bossier-caddo'), { bounds: LA }, 'nothing in Louisiana: show Louisiana');
+  assert.deepStrictEqual(mapFit([], 'youngsville'), { bounds: LA });
+  assert.deepStrictEqual(mapFit([{ lat: 30.2, lng: -91.99 }, { lat: 44.5, lng: -88 }], 'youngsville'),
+    { center: { lat: 30.2, lng: -91.99 }, zoom: 13 }, 'one pin left: centre on it');
+  /* a spread-out town is not trimmed: everything within 40 km stays */
+  const town = [[30.20, -92.00], [30.25, -91.95], [30.10, -92.10], [30.35, -92.05]].map(([lat, lng]) => ({ lat, lng }));
+  assert.deepStrictEqual(mapFit(town, 'youngsville').bounds, { south: 30.1, west: -92.1, north: 30.35, east: -91.95 });
+});
+
+test('the page sends the map-fit rule to the browser, and uses it', () => {
+  const vm = require('node:vm');
+  const { pageHtml } = require('../lib/explorer/page.js');
+  const html = pageHtml();
+  assert.match(html, /var mapFit = function mapFit\(pins, area\)/);
+  assert.match(html, /var fit = mapFit\(j\.pins, area\)/);
+  assert.doesNotMatch(html, /__MAP_FIT__/);
+  const src = html.match(/var mapFit = (function mapFit[\s\S]*?\n\})/)[1];
+  const fn = vm.runInNewContext('(' + src + ')');
+  assert.strictEqual(JSON.stringify(fn([], '')), JSON.stringify({ bounds: { south: 28.9, west: -94.05, north: 33.02, east: -88.8 } }));
+});
+
 test('the map key is handed over only after the password, and its absence is said plainly', async () => {
   const { handler } = setup();
   const shell = fakeRes();
