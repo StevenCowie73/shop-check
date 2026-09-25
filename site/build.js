@@ -87,6 +87,7 @@ ${footer()}`;
   return pageShell({
     title: C.BUSINESS.brand + ' — missed-call texts, reviews and simple websites for local trades',
     description: C.HOME.tagline,
+    share: { path: '/' },
     body
   });
 }
@@ -117,6 +118,7 @@ ${footer()}`;
   return pageShell({
     title: doc.title + ' — ' + C.BUSINESS.brand,
     description: doc.title + ' for ' + C.BUSINESS.brand + ', a trade name of ' + C.BUSINESS.legal + '.',
+    share: { path: '/' + slug },
     body
   });
 }
@@ -155,6 +157,7 @@ ${footer()}`;
   return pageShell({
     title: P.title,
     description: 'How ColdenJames texts a caller whose call was missed, step by step, with the exact wording.',
+    share: { path: '/sms' },
     body
   });
 }

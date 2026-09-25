@@ -182,7 +182,30 @@ footer nav a { margin-right: 18px; }
 }
 `.trim();
 
-function pageShell({ title, description, body, extraCss }) {
+/* What a link preview shows (iMessage, Facebook, WhatsApp and the rest):
+   the page's own title and description, the wordmark on cream, and the
+   page's canonical https://coldenjames.com address. Pages that pass no
+   `share` get no preview tags. A page can override the title or leave the
+   description out — the prospect page does both, so no business name ever
+   appears in a preview. */
+const SITE = 'https://coldenjames.com';
+function shareTags({ title, description, share }) {
+  if (!share) return '';
+  const t = share.title !== undefined ? share.title : title;
+  const d = share.description !== undefined ? share.description : description;
+  return [
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:url" content="${esc(SITE + share.path)}">`,
+    `<meta property="og:title" content="${esc(t)}">`,
+    d ? `<meta property="og:description" content="${esc(d)}">` : '',
+    `<meta property="og:image" content="${SITE}/brand/share.png">`,
+    `<meta property="og:image:width" content="1200">`,
+    `<meta property="og:image:height" content="630">`,
+    `<meta name="twitter:card" content="summary_large_image">`
+  ].filter(Boolean).join('\n') + '\n';
+}
+
+function pageShell({ title, description, body, extraCss, share }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -193,8 +216,10 @@ function pageShell({ title, description, body, extraCss }) {
 <meta name="description" content="${esc(description)}">
 <link rel="icon" href="/brand/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/brand/favicon-48.png" sizes="48x48" type="image/png">
+<link rel="icon" href="/brand/favicon-96.png" sizes="96x96" type="image/png">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
+${shareTags({ title, description, share })}<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>

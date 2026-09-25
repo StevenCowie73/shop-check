@@ -257,6 +257,10 @@ ${websiteSection}
   return pageShell({
     title: p.business + ' — ' + brand,
     description: "What I found for " + p.business + ".",
+    /* The same preview image as the rest of the site, titled with the brand
+       alone and no description, so a forwarded link never shows whose page
+       it is. The page stays noindex. */
+    share: { path: '/p/' + p.ref, title: brand, description: null },
     body,
     extraCss: PROSPECT_CSS
   });

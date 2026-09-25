@@ -7,7 +7,9 @@
 
    Needs Playwright and a Chromium (PLAYWRIGHT_BROWSERS_PATH, or pass
    CHROME=/path/to/chrome). The 32px favicon is the tight tab icon
-   (icon.svg); the 180px apple-touch icon is the roomier TOUCH_ICON. With a
+   (icon.svg); the 48 and 96px favicons are GOOGLE_ICON, roomy enough for
+   Google's circular crop; the 180px apple-touch icon is TOUCH_ICON; and
+   share.png is the 1200x630 link-preview image. With a
    preview directory it also writes previews there, for looking at — those
    are not part of the site. */
 
@@ -19,7 +21,7 @@ const OUT = path.join(__dirname, '..', 'public', 'brand');
 const svg = f => fs.readFileSync(path.join(OUT, f), 'utf8');
 /* The home-screen icon has more room than the tab icon, and is only ever
    a PNG, so it comes from site/brand-svg.js rather than a file. */
-const { TOUCH_ICON } = require('../site/brand-svg.js');
+const { TOUCH_ICON, GOOGLE_ICON } = require('../site/brand-svg.js');
 
 async function shoot(page, html, w, h, file) {
   await page.setViewportSize({ width: w, height: h });
@@ -38,6 +40,13 @@ async function shoot(page, html, w, h, file) {
 
   await shoot(page, fill(svg('icon.svg')), 32, 32, path.join(OUT, 'favicon-32.png'));
   await shoot(page, fill(TOUCH_ICON), 180, 180, path.join(OUT, 'apple-touch-icon.png'));
+  /* Google shows a search result's favicon cropped to a circle, from any
+     square that is a multiple of 48px. */
+  await shoot(page, fill(GOOGLE_ICON), 48, 48, path.join(OUT, 'favicon-48.png'));
+  await shoot(page, fill(GOOGLE_ICON), 96, 96, path.join(OUT, 'favicon-96.png'));
+  /* The link-preview image: the wordmark, large, on cream, nothing else. */
+  await shoot(page, `<div style="background:#F4EFE6;width:1200px;height:630px;display:flex;align-items:center;justify-content:center">
+    <div style="width:880px">${fill(svg('wordmark.svg'))}</div></div>`, 1200, 630, path.join(OUT, 'share.png'));
 
   const preview = process.argv[2];
   if (preview) {

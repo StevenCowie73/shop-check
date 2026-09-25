@@ -45,7 +45,8 @@ const PRIVATE_PAGES = {
 };
 
 const BRAND_FILES = new Set([
-  '/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/apple-touch-icon.png'
+  '/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/favicon-48.png',
+  '/brand/favicon-96.png', '/brand/apple-touch-icon.png', '/brand/share.png'
 ]);
 
 const INDEXABLE = 'index, follow';
@@ -78,8 +79,8 @@ export default function middleware(request) {
     });
   }
 
-  /* The mark and the favicons are plain files in public/brand/. Only the
-     four that exist are let through; anything else under /brand/ is the
+  /* The mark, the favicons and the share image are plain files in
+     public/brand/. Only the ones listed are let through; anything else under /brand/ is the
      same 404 as any other unknown path. */
   if (BRAND_FILES.has(url.pathname)) return next();
 

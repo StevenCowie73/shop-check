@@ -498,13 +498,15 @@ test('the wordmark and icon are outlines in the brand colours, split at each let
   }
   assert.strictEqual(/<path [^>]*fill="#C4501B"[^>]*stroke=/.test(WORDMARK), false, 'the rust half has no stroke');
   assert.strictEqual(/<path fill="#1C1917"[^>]*stroke=/.test(WORDMARK), false, 'the other letters have no stroke');
-  const { TOUCH_ICON } = require('../site/brand-svg.js');
-  for (const [name, svg] of [['icon', ICON], ['touch icon', TOUCH_ICON]]) {
+  const { TOUCH_ICON, GOOGLE_ICON } = require('../site/brand-svg.js');
+  for (const [name, svg] of [['icon', ICON], ['touch icon', TOUCH_ICON], ['google icon', GOOGLE_ICON]]) {
     assert.strictEqual((svg.match(/paint-order="stroke"/g) || []).length, 1, name + ' uses the outlined C');
     assert.strictEqual(/<text|<tspan|font-family/.test(svg), false, name + ' has no live text');
   }
   const side = svg => Number(/viewBox="0 0 ([\d.]+)/.exec(svg)[1]);
   assert.ok(side(ICON) < side(TOUCH_ICON), 'the tab icon is cropped tighter than the home-screen icon');
+  assert.ok(Math.abs(side(ICON) / side(GOOGLE_ICON) - 0.65 / 0.80) < 0.01,
+    'the Google icon gives the C 65% of the square where the tab icon gives it 80%');
   assert.ok(WORDMARK.includes('fill="#1C1917"'), 'the rest is ink');
   assert.ok(ICON.includes('fill="#F4EFE6"'), 'the icon sits on cream');
   for (const f of ['wordmark.svg', 'icon.svg']) {
@@ -539,8 +541,11 @@ test('every page links the favicons, and the site host serves exactly those file
     assert.match(html, /<link rel="icon" href="\/brand\/icon\.svg" type="image\/svg\+xml">/, f);
     assert.match(html, /<link rel="icon" href="\/brand\/favicon-32\.png" sizes="32x32" type="image\/png">/, f);
     assert.match(html, /<link rel="apple-touch-icon" href="\/brand\/apple-touch-icon\.png">/, f);
+    assert.match(html, /<link rel="icon" href="\/brand\/favicon-48\.png" sizes="48x48" type="image\/png">/, f);
+    assert.match(html, /<link rel="icon" href="\/brand\/favicon-96\.png" sizes="96x96" type="image\/png">/, f);
   }
-  for (const p of ['/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/apple-touch-icon.png']) {
+  for (const p of ['/brand/wordmark.svg', '/brand/icon.svg', '/brand/favicon-32.png', '/brand/favicon-48.png',
+                   '/brand/favicon-96.png', '/brand/apple-touch-icon.png', '/brand/share.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public', p)), p + ' is committed');
     const res = middleware(req('coldenjames.com', p));
     assert.strictEqual(res.headers.get('x-middleware-next'), '1', p + ' is passed through to the file');
@@ -558,4 +563,30 @@ test('the letter template uses the wordmark as its letterhead', () => {
     { ref: 'DEMO2026', url: 'https://coldenjames.com/p/DEMO2026?c=letter',
       printed: 'coldenjames.com/p/DEMO2026', image: 'data:image/png;base64,' });
   assert.ok(html.includes('<div class="bizname">' + WORDMARK + '</div>'));
+});
+
+/* ---------- link previews ---------- */
+
+const metaOf = (html, key) => {
+  const m = new RegExp('<meta (?:property|name)="' + key.replace(/[:]/g, '\\:') + '" content="([^"]*)">').exec(html);
+  return m ? m[1] : null;
+};
+const unesc = t => t.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+
+test('the four public pages carry link-preview tags with absolute coldenjames.com URLs', () => {
+  for (const [f, url] of [['index.html', 'https://coldenjames.com/'], ['terms.html', 'https://coldenjames.com/terms'],
+                          ['privacy.html', 'https://coldenjames.com/privacy'], ['sms.html', 'https://coldenjames.com/sms']]) {
+    const html = fs.readFileSync(path.join(OUT, f), 'utf8');
+    const title = unesc(/<title>([^<]*)<\/title>/.exec(html)[1]);
+    const description = unesc(/<meta name="description" content="([^"]*)">/.exec(html)[1]);
+    assert.strictEqual(metaOf(html, 'og:url'), url, f);
+    assert.strictEqual(unesc(metaOf(html, 'og:title')), title, f + ': the page title, no new wording');
+    assert.strictEqual(unesc(metaOf(html, 'og:description')), description, f + ': the page description');
+    assert.strictEqual(metaOf(html, 'og:image'), 'https://coldenjames.com/brand/share.png', f);
+    assert.strictEqual(metaOf(html, 'twitter:card'), 'summary_large_image', f);
+  }
+  for (const f of ['setup.html', '404.html']) {
+    assert.strictEqual(/property="og:/.test(fs.readFileSync(path.join(OUT, f), 'utf8')), false, f + ' has no preview');
+  }
+  assert.ok(fs.existsSync(path.join(ROOT, 'public', 'brand', 'share.png')));
 });

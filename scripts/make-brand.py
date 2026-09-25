@@ -41,6 +41,7 @@ TRACKING = -0.02          # em
 SPLIT = {0, 6}            # the C and the J
 OUTLINE = 25              # font units visible outside the letter (~1px at 40px letters)
 ICON_FILL = 0.80          # tab icon: the outlined C spans this much of the square
+GOOGLE_FILL = 0.65        # search-result icon: small enough to survive Google's circular crop
 TOUCH_ROOM = 1.44         # home-screen icon: square side / C, the roomier one
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
@@ -155,6 +156,9 @@ def main(font_path):
 
     # Browser tabs: tight, so the C still reads at 16px.
     icon = icon_svg((max(cw, ch) + 2 * OUTLINE) / ICON_FILL, 'cj-icon-top')
+    # Google search results: Google crops favicons to a circle, so the C
+    # sits well inside it.
+    google_icon = icon_svg((max(cw, ch) + 2 * OUTLINE) / GOOGLE_FILL, 'cj-google-top')
     # Home screens: the roomier square, which the phone masks and rounds.
     touch_icon = icon_svg(max(cw, ch) * TOUCH_ROOM, 'cj-touch-top')
 
@@ -169,7 +173,8 @@ def main(font_path):
           f"module.exports = {{\n  WORDMARK: {json.dumps(wordmark)},\n"
           f"  WORDMARK_RATIO: {width / height:.4f},\n"
           f"  ICON: {json.dumps(icon)},\n"
-          f"  TOUCH_ICON: {json.dumps(touch_icon)}\n}};\n")
+          f"  TOUCH_ICON: {json.dumps(touch_icon)},\n"
+          f"  GOOGLE_ICON: {json.dumps(google_icon)}\n}};\n")
     with open(os.path.join(ROOT, 'site', 'brand-svg.js'), 'w') as f:
         f.write(js)
 
@@ -180,7 +185,8 @@ def main(font_path):
     print('glyphs:', ' '.join(n for n, *_ in placed))
     print('outline:', OUTLINE, 'units outside; stroked paths in wordmark:', wordmark.count('paint-order'))
     print(f'tab icon: C spans {ICON_FILL:.0%} of the square with its outline; touch icon side = {TOUCH_ROOM} x C')
-    print('any <text> in output:', any('<text' in x for x in (wordmark, icon, touch_icon)))
+    print(f'google icon: C spans {GOOGLE_FILL:.0%} of the square with its outline')
+    print('any <text> in output:', any('<text' in x for x in (wordmark, icon, touch_icon, google_icon)))
 
 
 if __name__ == '__main__':

@@ -593,3 +593,23 @@ test('the limits are in memory only and keep no address', () => {
   /* it says what it cannot do, because these numbers are easy to over-trust */
   assert.ok(src.includes('per instance'), 'the honest caveat is missing');
 });
+
+test('a prospect page previews with the brand and the share image, never the business name', async () => {
+  const p = await getProspect(DEMO_REF);
+  const html = prospectRoute.render(p, 'letter');
+  const og = (html.match(/<meta (?:property="og:[^"]+"|name="twitter:[^"]+") content="[^"]*">/g) || []);
+  assert.ok(og.length >= 5, 'preview tags present');
+  for (const tag of og) {
+    assert.strictEqual(tag.includes(p.business), false, 'no business name in ' + tag);
+    assert.strictEqual(/marsh|fencing/i.test(tag), false, tag);
+  }
+  assert.ok(html.includes('<meta property="og:image" content="https://coldenjames.com/brand/share.png">'));
+  assert.ok(html.includes('<meta property="og:title" content="ColdenJames">'));
+  assert.ok(html.includes('<meta property="og:url" content="https://coldenjames.com/p/DEMO2026">'));
+  assert.strictEqual(html.includes('property="og:description"'), false);
+  assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'));
+
+  const res = fakeRes();
+  await prospectRoute(fakeReq('/api/prospect?ref=' + DEMO_REF), res);
+  assert.strictEqual(res.headers['x-robots-tag'], 'noindex, nofollow', 'still noindex');
+});
