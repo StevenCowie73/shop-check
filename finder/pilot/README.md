@@ -37,7 +37,7 @@ have nothing to do (no Astra round yet, nothing to audit) say so and carry on.
 | 13 | `npm run pilot:astra` | Round 2 (`PILOT_ASTRA_ROUND=2`), if step 12 found anyone | api.openai.com |
 | 14 | `npm run pilot:astra-audit -- 2` | Audits round 2's websites | the prospects' own sites |
 | 15 | `npm run pilot:merge` | Folds round 2 in and re-ranks | — |
-| 16 | `npm run pilot:letters` | Renders the top twenty to `pilot-letters.pdf` | Google Fonts, once |
+| 16 | `npm run pilot:letters` | Renders the top twenty to `pilot-letters.pdf` | cdn.jsdelivr.net (the font files), once |
 | 17 | `npm run pilot:verify` | Opens that PDF and scans every QR code in it | — |
 
 `npm run pilot:rebuild` runs steps 5, 9, 10, 11, 15, 16 and 17 — everything
@@ -183,3 +183,26 @@ lib/domains.js   email classification and the mismatch rule
 lib/rank.js      the four signals and their weights
 1..10-*.js       the chain, in order
 ```
+
+## Sending through Lob
+
+Nothing is mailed by the pipeline. A letter is sent one at a time, from the
+database, and only after a person has approved it:
+
+```
+node db/letters-approve.js --letter ID --https --confirm
+node db/lob-send.js --letter ID --https --confirm          # test key
+node db/lob-send.js --letter ID --https --live --confirm   # real mail
+```
+
+`lib/lob.js` refuses anything not approved, a mock, a letter already mailed,
+a business marked do not contact, a live key without `--live` (and `--live`
+with a test key), an incomplete return or recipient address, a letter still
+carrying `[MAILING ADDRESS]`, and a PDF that is not one US Letter page with
+real embedded fonts. It stores Lob's letter id and expected delivery date on
+the letter. The key is `LOB_API_KEY`; if a proxy injects it instead, set
+`LOB_KEY_MODE` to `test` or `live`, since the process cannot see the key.
+
+Page one is laid out around Lob's address block (`top_first_page`): nothing
+of ours left of 4.625in above 2.84in, the letter body starts at 3in, and the
+QR stays clear of the folds. `tests/lob.test.js` measures a real render.

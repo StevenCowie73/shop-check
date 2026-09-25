@@ -8,7 +8,8 @@
    image before it is embedded, so a letter cannot go out carrying a QR that
    does not scan.
 
-   [MAILING ADDRESS] is still a literal placeholder, waiting on the filing.
+   [MAILING ADDRESS] stays a literal placeholder until site/content.js has
+   the address, and a letter carrying it cannot be mailed (lib/lob.js).
    The phone number is the one the website shows, from site/content.js.
 
    The fill rules are the point of this file. What a letter may say about
@@ -38,11 +39,20 @@ const { hereIn } = require('./lib/area.js');
 const { WORDMARK } = require('../../site/brand-svg.js');
 /* One number everywhere: the site, the prospect page and the letter. */
 const PHONE = require('../../site/content.js').BUSINESS.phone;
+/* The letterhead address: the placeholder until the filing is done. lib/lob.js
+   refuses to mail a letter that still carries a [PLACEHOLDER]. */
+const MAILING_ADDRESS = require('../../site/content.js').BUSINESS.mailingAddress || '[MAILING ADDRESS]';
 
-const FONT_CSS_URL =
-  'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap';
-const BROWSER_UA =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+/* IBM Plex Sans as static files, one per weight, from the Fontsource
+   package (OFL). Google Fonts now serves Plex as a single variable font,
+   and Chromium writes a variable font into a PDF as Type 3 glyphs, which a
+   print shop's preflight flags; static files embed as ordinary TrueType. */
+const FONT_BASE = 'https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/files/';
+const FONT_WEIGHTS = [400, 500, 600];
+const FONT_SUBSETS = {
+  'latin-ext': 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF',
+  latin: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'
+};
 
 /* ---------- the website paragraph ---------- */
 /* The wording lives in lib/website-finding.js because the prospect page has
@@ -54,21 +64,33 @@ function websiteParagraph(rec, row) {
 }
 
 /* ---------- fonts ---------- */
-/* Fetched once into out/, never committed. */
+/* Fetched once into out/, never committed. A cache from before the switch
+   to static files (one variable font per subset) is replaced. */
 function ensureFonts() {
-  if (fs.existsSync(P.fontCss)) return;
+  if (fs.existsSync(P.fontCss) && fs.readFileSync(P.fontCss, 'utf8').includes('fontsource-static')) return;
   fs.mkdirSync(P.fontsDir, { recursive: true });
   console.log('fetching IBM Plex Sans (once) ...');
-  let css = execFileSync('curl', ['-sS', '-A', BROWSER_UA, '--max-time', '60', FONT_CSS_URL],
-    { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
-  const urls = [...new Set(css.match(/https:\/\/fonts\.gstatic\.com[^) ]+\.woff2/g) || [])];
-  urls.forEach((url, i) => {
-    const file = path.join(P.fontsDir, 'f' + (i + 1) + '.woff2');
-    execFileSync('curl', ['-sS', '--max-time', '60', url, '-o', file]);
-    css = css.split(url).join('fonts/f' + (i + 1) + '.woff2');
-  });
+  let css = '/* fontsource-static: IBM Plex Sans, OFL */\n';
+  for (const w of FONT_WEIGHTS) {
+    for (const [subset, range] of Object.entries(FONT_SUBSETS)) {
+      const name = 'plex-' + subset + '-' + w + '.woff2';
+      execFileSync('curl', ['-sSf', '--max-time', '60', FONT_BASE + 'ibm-plex-sans-' + subset + '-' + w + '-normal.woff2',
+        '-o', path.join(P.fontsDir, name)]);
+      css += `@font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: ${w}; font-display: block; ` +
+        `src: url(fonts/${name}) format("woff2"); unicode-range: ${range}; }\n`;
+    }
+  }
   fs.writeFileSync(P.fontCss, css);
-  console.log('  ' + urls.length + ' font files cached in ' + P.fontsDir);
+  console.log('  ' + FONT_WEIGHTS.length * Object.keys(FONT_SUBSETS).length + ' font files cached in ' + P.fontsDir);
+}
+
+/* The font CSS with every font file inlined as a data URI. Each letter's
+   HTML is stored on its own (db/importers/letters.js) and rendered again to
+   a PDF for Lob (lib/lob.js), far from out/letters/fonts; with relative
+   URLs it would quietly print in a fallback face. */
+function inlineFonts(css, dir = path.dirname(P.fontCss)) {
+  return css.replace(/url\((['"]?)(fonts\/[^'")]+\.woff2)\1\)/g, (m, q, rel) =>
+    'url(data:font/woff2;base64,' + fs.readFileSync(path.join(dir, rel)).toString('base64') + ')');
 }
 
 /* ---------- chromium ---------- */
@@ -105,10 +127,10 @@ function letterHtml(row, rec, code) {
   const html = `<section class="page">
   <header class="head">
     <div class="bizname">${WORDMARK}</div>
-    <p class="bizaddr">[MAILING ADDRESS]</p>
+    <p class="bizaddr">${esc(MAILING_ADDRESS)}</p>
+    <div class="rule"></div>
+    <p class="date">${esc(date)}</p>
   </header>
-  <div class="rule"></div>
-  <p class="date">${esc(date)}</p>
   <p class="greeting">${esc(greeting)}</p>
   <p>When you're on a job and the phone rings, you can't always get to it. Most people who get voicemail don't leave a message. They call the next ${esc(trade.noun)}.</p>
   <p>I'm Steven, here in ${esc(hereIn(rec))}. I set up a simple fix for that. When you miss a call, the caller gets a text from ${esc(biz)} straight away, so they know you'll get back to them. You reply when you're off the job.</p>
@@ -150,33 +172,45 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+/* Lob prints the envelope addresses on page one (address_placement
+   top_first_page) and they show through a #10 double-window envelope.
+   From Lob's letter template (help.lob.com, letter_template_updated 4_25):
+     white address box  0.6in from the left, 0.84in from the top, 3.15 x 2in;
+                        anything under it is printed over
+     top window         0.625in left, 0.5in top, 3.25 x 0.875in
+     bottom window      0.625in left, 1.708in top, 4 x 1in
+     barcode box        0.5 x 0.5in, 0.087in from the left and bottom edges,
+                        and a serial number up the left edge below 8.75in
+     clear space        1/16in on every side
+   So nothing of ours goes left of 4.625in above 2.84in: the letterhead and
+   date sit top right, clear of both windows, and the letter starts at 3in.
+   The folds (C-fold, at about 3.75in and 7.75in) must not cut the QR.
+   tests/lob.test.js measures all of this in a real render. */
 .page {
   width: 8.5in; height: 11in; box-sizing: border-box;
-  /* 0.85in top and 0.6in bottom make room for the texting line under the
-     number without spilling onto a second page; 0.6in is still well inside
-     any printer's margin. */
-  padding: 0.85in 1.1in 0.6in;
+  padding: 2.98in 0.8in 0.45in 0.85in;
+  position: relative;
   page-break-after: always; break-after: page;
   display: flex; flex-direction: column;
 }
 .page:last-child { page-break-after: auto; break-after: auto; }
-p { margin: 0 0 9pt; }
-.head { margin-bottom: 9pt; }
+p { margin: 0 0 8pt; }
+.head { position: absolute; top: 0.6in; left: 4.95in; right: 0.8in; }
 .bizname { margin: 0 0 5pt; }
 .bizname svg { display: block; height: 0.2in; width: auto; }
 .bizaddr { font-size: 10pt; margin: 0; }
 /* The page is a column flex container, so a 1.3pt box shrinks to nothing
    unless it is told not to. That is how this rule once vanished silently. */
-.rule { flex: none; height: 1.3pt; background: #C4501B; width: 100%; margin: 0 0 20pt; }
-.date { font-size: 10.5pt; margin-bottom: 16pt; }
+.rule { flex: none; height: 1.3pt; background: #C4501B; width: 100%; margin: 10pt 0 12pt; }
+.date { font-size: 10.5pt; margin: 0; }
 .greeting { font-weight: 600; font-size: 12pt; margin-bottom: 13pt; }
-.qrblock { flex: none; margin: 3pt 0 12pt; }
+.qrblock { flex: none; margin: 2pt 0 10pt; display: flex; align-items: center; gap: 14pt; }
 /* A real code, drawn at 720px and printed into one inch, so the printer
    rather than the image decides how fine the modules are. No border: the
    quiet zone is inside the image and a rule drawn against it is exactly what
    a scanner does not want. */
 .qr { flex: none; display: block; width: 1in; height: 1in; }
-.url { font-size: 10.5pt; margin: 7pt 0 0; }
+.url { font-size: 10.5pt; margin: 0; }
 .sig { margin-top: 14pt; margin-bottom: 0; }
 /* Directly under the number, small: what a caller agrees to by calling. */
 .smsnote { font-size: 8.5pt; line-height: 1.45; color: #57534E; margin: 3pt 0 0; text-wrap: balance; }
@@ -223,7 +257,7 @@ async function main() {
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Pilot letters — review</title>
 <style>
-${pageCss(fs.readFileSync(P.fontCss, 'utf8'))}
+${pageCss(inlineFonts(fs.readFileSync(P.fontCss, 'utf8')))}
 </style></head><body>
 ${built.map(b => b.html).join('\n')}
 </body></html>`;
@@ -260,4 +294,4 @@ if (require.main === module) {
   main().catch(err => { console.error(err.message); process.exit(1); });
 }
 
-module.exports = { letterHtml, pageCss, ensureFonts, findChrome };
+module.exports = { letterHtml, pageCss, ensureFonts, findChrome, inlineFonts };

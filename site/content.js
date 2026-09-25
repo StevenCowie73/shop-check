@@ -20,6 +20,10 @@ const BUSINESS = {
   /* Add the mailing address here when the filing is done; it shows on the
      legal pages once it is not empty. */
   mailingAddress: '',
+  /* The same mailbox, in parts: the return address Lob prints in the
+     envelope's top window (lib/lob.js). Nothing is mailed until every part
+     except line2 is filled in. Lob allows 64 characters per line. */
+  mailbox: { name: 'Steven Cowie', company: 'ColdenJames', line1: '', line2: '', city: '', state: 'LA', zip: '' },
   phone: PHONE,
   domain: 'coldenjames.com'
 };
