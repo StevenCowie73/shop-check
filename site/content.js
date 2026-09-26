@@ -10,6 +10,31 @@
    Call me buttons all disappear. Then run: npm run site:build */
 const PHONE = '(318) 666-6445';
 
+/* The mailbox: the one postal address for the business, in parts. It is
+   the return address Lob prints in the envelope's top window (lib/lob.js),
+   the letterhead on every letter, and the Post line on the site. The name
+   must be one on the USPS Form 1583 for this box, or mail to it can be
+   refused, so it is Steven's own name and the company's legal name, never
+   the trade name. Lob allows 40 characters for name and company and 64 per
+   address line; nothing is mailed unless every part except line2 is set. */
+const MAILBOX = {
+  name: 'Steven Cowie',
+  company: 'COWIE.AI LLC',
+  line1: '601 Kingston Rd',
+  line2: 'Ste 300 #1016',
+  city: 'Benton',
+  state: 'LA',
+  zip: '71006'
+};
+
+/* The same address as the lines a person writes on an envelope, and as one
+   line: "COWIE.AI LLC, 601 Kingston Rd, Ste 300 #1016, Benton, LA 71006". */
+const MAILING_LINES = [
+  MAILBOX.company,
+  [MAILBOX.line1, MAILBOX.line2].filter(Boolean).join(', '),
+  MAILBOX.city + ', ' + MAILBOX.state + ' ' + MAILBOX.zip
+];
+
 const BUSINESS = {
   brand: 'ColdenJames',
   legal: 'COWIE.AI LLC',
@@ -17,13 +42,10 @@ const BUSINESS = {
   email: 'steven@coldenjames.com',
   city: 'Bossier City',
   state: 'Louisiana',
-  /* Add the mailing address here when the filing is done; it shows on the
-     legal pages once it is not empty. */
-  mailingAddress: '',
-  /* The same mailbox, in parts: the return address Lob prints in the
-     envelope's top window (lib/lob.js). Nothing is mailed until every part
-     except line2 is filled in. Lob allows 64 characters per line. */
-  mailbox: { name: 'Steven Cowie', company: 'ColdenJames', line1: '', line2: '', city: '', state: 'LA', zip: '' },
+  /* Shown as the Post line on the home page and in every page's footer. */
+  mailingAddress: MAILING_LINES.join(', '),
+  mailingLines: MAILING_LINES,
+  mailbox: MAILBOX,
   phone: PHONE,
   domain: 'coldenjames.com'
 };

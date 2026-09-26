@@ -19,9 +19,12 @@ const OUT = path.join(__dirname, '..', 'public', 'coldenjames');
    animation. It should read like a well-made sign, not a landing page. */
 
 
-function footer() {
+/* The Post line is on every page but the home page, whose contact block
+   already gives the address. */
+function footer({ post = true } = {}) {
   return `<footer>
-  <p>${esc(C.BUSINESS.brand)} is a trade name of ${esc(C.BUSINESS.legal)}, ${esc(C.BUSINESS.city)}, ${esc(C.BUSINESS.state)}.</p>
+  <p>${esc(C.BUSINESS.brand)} is a trade name of ${esc(C.BUSINESS.legal)}, ${esc(C.BUSINESS.city)}, ${esc(C.BUSINESS.state)}.</p>${post && C.BUSINESS.mailingAddress ? `
+  <p>Post: ${esc(C.BUSINESS.mailingAddress)}</p>` : ''}
   <nav><a href="/sms">Text messages</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
 </footer>`;
 }
@@ -82,7 +85,7 @@ ${services}
 <h2>Getting hold of me</h2>
 ${contactBlock()}
 
-${footer()}`;
+${footer({ post: false })}`;
 
   return pageShell({
     title: C.BUSINESS.brand + ' — Missed-call texts, reviews and simple websites for local trades',

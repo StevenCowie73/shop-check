@@ -8,8 +8,10 @@
    image before it is embedded, so a letter cannot go out carrying a QR that
    does not scan.
 
-   [MAILING ADDRESS] stays a literal placeholder until site/content.js has
-   the address, and a letter carrying it cannot be mailed (lib/lob.js).
+   The letterhead address is the business mailbox from site/content.js, the
+   same one Lob prints as the return address. With no address there it
+   falls back to a literal [MAILING ADDRESS], and a letter carrying that
+   cannot be mailed (lib/lob.js).
    The phone number is the one the website shows, from site/content.js.
 
    The fill rules are the point of this file. What a letter may say about
@@ -34,14 +36,15 @@ const { LETTER_SMS_LINE } = require('../../lib/texting-copy.js');
 const { hereIn } = require('./lib/area.js');
 
 /* The letterhead: the ColdenJames wordmark, drawn as outlines so it prints
-   the same whatever fonts the renderer has. The address is the one thing
-   still missing. */
+   the same whatever fonts the renderer has. */
 const { WORDMARK } = require('../../site/brand-svg.js');
 /* One number everywhere: the site, the prospect page and the letter. */
 const PHONE = require('../../site/content.js').BUSINESS.phone;
-/* The letterhead address: the placeholder until the filing is done. lib/lob.js
+/* The letterhead address, one line per envelope line: company, street,
+   town. The placeholder only if content.js has no address; lib/lob.js
    refuses to mail a letter that still carries a [PLACEHOLDER]. */
-const MAILING_ADDRESS = require('../../site/content.js').BUSINESS.mailingAddress || '[MAILING ADDRESS]';
+const { BUSINESS } = require('../../site/content.js');
+const MAILING_LINES = BUSINESS.mailingAddress ? BUSINESS.mailingLines : ['[MAILING ADDRESS]'];
 
 /* IBM Plex Sans as static files, one per weight, from the Fontsource
    package (OFL). Google Fonts now serves Plex as a single variable font,
@@ -127,7 +130,7 @@ function letterHtml(row, rec, code) {
   const html = `<section class="page">
   <header class="head">
     <div class="bizname">${WORDMARK}</div>
-    <p class="bizaddr">${esc(MAILING_ADDRESS)}</p>
+    <p class="bizaddr">${MAILING_LINES.map(esc).join('<br>')}</p>
     <div class="rule"></div>
     <p class="date">${esc(date)}</p>
   </header>
@@ -198,7 +201,7 @@ p { margin: 0 0 8pt; }
 .head { position: absolute; top: 0.6in; left: 4.95in; right: 0.8in; }
 .bizname { margin: 0 0 5pt; }
 .bizname svg { display: block; height: 0.2in; width: auto; }
-.bizaddr { font-size: 10pt; margin: 0; }
+.bizaddr { font-size: 10pt; line-height: 1.35; margin: 0; }
 /* The page is a column flex container, so a 1.3pt box shrinks to nothing
    unless it is told not to. That is how this rule once vanished silently. */
 .rule { flex: none; height: 1.3pt; background: #C4501B; width: 100%; margin: 10pt 0 12pt; }

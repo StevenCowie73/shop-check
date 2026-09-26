@@ -114,8 +114,10 @@ test('a proxy-injected key must be declared, and is never sent by us', async () 
 test('both addresses must be complete and within Lob\'s lengths', async () => {
   const h = harness();
   const { BUSINESS } = require('../site/content.js');
-  if (!BUSINESS.mailbox.line1) await assert.rejects(send(h, { from: BUSINESS.mailbox }), /return address is incomplete: street, city, ZIP/,
-    'the real mailbox is empty until the filing: nothing can be mailed yet');
+  assert.deepStrictEqual(lob.lobAddress(BUSINESS.mailbox, 'return'), {
+    name: 'Steven Cowie', company: 'COWIE.AI LLC', address_line1: '601 Kingston Rd', address_line2: 'Ste 300 #1016',
+    address_city: 'Benton', address_state: 'LA', address_zip: '71006', address_country: 'US' },
+  'the return address is the mailbox on the Form 1583: Steven and the LLC, never the trade name');
   await assert.rejects(send(h, { letter: approved({ to: { company: 'Marsh Lane Fencing', line1: '12 Invented Rd', city: 'Shreveport', state: 'LA' } }) }), /recipient address is incomplete: ZIP/);
   await assert.rejects(send(h, { letter: approved({ to: { ...approved().to, company: 'X'.repeat(41) } }) }), /company is 41 characters; Lob allows 40/);
   await assert.rejects(send(h, { from: { ...FROM, line1: 'Y'.repeat(65) } }), /address_line1 is 65 characters; Lob allows 64/);
@@ -222,6 +224,12 @@ test('nothing on page one lands in Lob\'s address area, windows or barcode corne
       assert.deepStrictEqual(lob.checkPdf(pdf).pages, 1);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
+
+test('the letterhead carries the mailbox, one envelope line at a time, and no placeholder', () => {
+  const html = inventedLetter('data:image/png;base64,');
+  assert.match(html, /<p class="bizaddr">COWIE\.AI LLC<br>601 Kingston Rd, Ste 300 #1016<br>Benton, LA 71006<\/p>/);
+  assert.doesNotThrow(() => lob.assertNoPlaceholder(html));
+});
 
 test('the template keeps the approved wording', () => {
   const html = inventedLetter('data:image/png;base64,');
