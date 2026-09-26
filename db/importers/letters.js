@@ -10,6 +10,10 @@
 
      node db/importers/letters.js [--sent 2026-10-01] [--run ID] --confirm
 
+   Importing drafts again after a re-render replaces each draft's HTML in
+   place (same letter id, no new row). If any of the letters has been
+   approved or sent, nothing is imported.
+
    A mock run (a test of the engine on a new area, rendered with a
    placeholder code and never to be sent) has no table.json. Pass --mock and
    --spine instead: the table is the shortlist's top twenty in rank order,
@@ -53,11 +57,23 @@ async function importLetters({ html, table, store, sentAt = null, runId = null, 
       throw new Error('letter ' + (i + 1) + ' does not name the business in row ' + (i + 1) + '; not importing.');
     }
   }
+  /* A draft import replaces each business's draft in place, and refuses
+     before writing anything if any of them has been approved or sent. */
+  if (!mock && !sentAt && store.existingLetters) {
+    const { draftReplacement } = require('../../lib/explorer/pg-store.js');
+    const existing = await store.existingLetters(table.map(t => t.ref), runId);
+    for (const t of table) {
+      const d = draftReplacement(t.ref, existing.get(t.ref) || []);
+      if (d.refuse) throw new Error(d.refuse);
+    }
+  }
+  let replaced = 0;
   for (let i = 0; i < table.length; i++) {
-    await store.addLetter(table[i].ref, { state: mock ? 'mock' : sentAt ? 'sent' : 'draft', sentAt, html: pages[i], runId });
+    const r = await store.addLetter(table[i].ref, { state: mock ? 'mock' : sentAt ? 'sent' : 'draft', sentAt, html: pages[i], runId });
+    if (r && r.replaced) replaced++;
     if (sentAt) await store.addEvent({ prospectId: table[i].ref, runId, kind: 'letter_sent', at: sentAt, detail: {}, source: 'letters' });
   }
-  return { letters: pages.length };
+  return { letters: pages.length, replaced };
 }
 
 module.exports = { importLetters, splitLetters, tableFromShortlist };
@@ -71,7 +87,7 @@ if (require.main === module) {
     const store = await cliStore(o);
     const r = await importLetters({ html: fs.readFileSync(o.html || P.lettersHtml, 'utf8'), table,
       store, sentAt: o.sent ? new Date(o.sent).toISOString() : null, runId: o.run || null, mock: !!o.mock });
-    console.log('imported ' + r.letters + ' letters');
+    console.log('imported ' + r.letters + ' letters' + (r.replaced ? ', ' + r.replaced + ' of them replacing a draft in place' : ''));
     process.exit(0);
   })().catch(e => { console.error(e.message); process.exit(1); });
 }
