@@ -191,20 +191,35 @@ function inventedLetter(qrImage) {
   return html;
 }
 
+/* And the other kind: nothing found to say about the website (it was
+   fine, or we could not tell), so no website paragraph, and the shorter
+   line beside the QR. Same long name and no first name. */
+function inventedNoFinding(qrImage) {
+  const { html } = letterHtml(
+    { company: 'QUOKKA LAGOON ROOFING AND CONSTRUCTION SERVICES LLC', rank: 2, websiteState: 'fine', emailUsable: true },
+    { qualifyingParties: [], mailingAddress: { city: 'Bossier City' }, parish: 'Bossier', foundVia: ['Bossier / Residential License Certificate'],
+      websiteAudit: { url: 'https://quokkalagoonroofingandconstruction.example.com/', siteScore: 10, loads: true, source: 'astra', whatsWrong: '' } },
+    { ref: 'DEMO2027', url: 'https://coldenjames.com/p/DEMO2027?c=letter', printed: 'coldenjames.com/p/DEMO2027', image: qrImage });
+  return html;
+}
+
 test('nothing on page one lands in Lob\'s address area, windows or barcode corner; the QR clears both folds; it is one page',
   { skip: chrome ? false : 'no Chromium on this machine' }, async () => {
     const { qrDataUri } = require('../lib/qr.js');
-    const html = '<!doctype html><html><head><meta charset="utf-8"><style>' + pageCss('') + '</style></head><body>' +
-      inventedLetter(await qrDataUri('https://coldenjames.com/p/DEMO2026?c=letter')) + '</body></html>';
-    const pages = layout.measure(html, chrome);
-    assert.strictEqual(pages.length, 1);
-    assert.deepStrictEqual(layout.problems(pages[0]), []);
-    const qr = pages[0].boxes.find(x => x.el === 'IMG.qr').b;
-    assert.ok(qr[3] < 7.2 - layout.FOLD_MARGIN, 'the QR ' + JSON.stringify(qr) + ' sits above a lower fold anywhere from 7.2in');
-    assert.ok(qr[1] > 3.75 + layout.FOLD_MARGIN, 'and below the upper fold');
+    for (const [which, make] of [['with a finding', inventedLetter], ['with no finding', inventedNoFinding]]) {
+      const html = '<!doctype html><html><head><meta charset="utf-8"><style>' + pageCss('') + '</style></head><body>' +
+        make(await qrDataUri('https://coldenjames.com/p/DEMO2026?c=letter')) + '</body></html>';
+      const pages = layout.measure(html, chrome);
+      assert.strictEqual(pages.length, 1, which);
+      assert.deepStrictEqual(layout.problems(pages[0]), [], which);
+      const qr = pages[0].boxes.find(x => x.el === 'IMG.qr').b;
+      assert.ok(qr[3] < 7.2 - layout.FOLD_MARGIN, which + ': the QR ' + JSON.stringify(qr) + ' sits above a lower fold anywhere from 7.2in');
+      assert.ok(qr[1] > 3.75 + layout.FOLD_MARGIN, which + ': and below the upper fold');
+      assert.deepStrictEqual([+(qr[2] - qr[0]).toFixed(3), +(qr[3] - qr[1]).toFixed(3)], [1, 1], which + ': the QR is one inch');
 
-    const pdf = require('../lib/letter-pdf.js').renderLetterPdf(html, { chrome });
-    assert.deepStrictEqual(lob.checkPdf(pdf).pages, 1);
+      const pdf = require('../lib/letter-pdf.js').renderLetterPdf(html, { chrome });
+      assert.deepStrictEqual(lob.checkPdf(pdf).pages, 1, which);
+    }
   });
 
 test('the zone check catches a QR anywhere in the 7.2in to 7.9in fold band, and anything in the address box', () => {
@@ -245,4 +260,11 @@ test('the template keeps the approved wording', () => {
     "If it's not for you, no hard feelings. If it is, text me.",
     'Sent to the mailing address on your state contractor license.'
   ]) assert.ok(html.replace(/&amp;/g, '&').includes(line), line);
+});
+
+test('with no website finding, the letter has no website paragraph and the shorter line, with the same camera instruction', () => {
+  const html = inventedNoFinding('data:image/png;base64,').replace(/&amp;/g, '&');
+  assert.ok(html.includes("I made a page for you showing how it would work. Point your phone's camera at the code, or type in the address:"));
+  assert.ok(!html.includes('what I found'));
+  assert.ok(!/I also |I found /.test(html), 'no website paragraph');
 });

@@ -124,7 +124,7 @@ function letterHtml(row, rec, code) {
   const website = websiteParagraph(rec, row);
   const pageLine = website.text
     ? "I made a page for you showing what I found and how it would work. Point your phone's camera at the code, or type in the address:"
-    : 'I made a page for you showing how it would work:';
+    : "I made a page for you showing how it would work. Point your phone's camera at the code, or type in the address:";
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   const html = `<section class="page">
