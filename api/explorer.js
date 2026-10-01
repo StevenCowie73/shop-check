@@ -213,9 +213,12 @@ function makeHandler(deps = {}) {
       const note = ID.test(q.id || '') ? await store.addNote(q.id, text) : null;
       return note ? { note } : [404, { error: 'No such business.' }];
     },
+    /* On is one tap. Off needs { value: false, confirm: true }, and is
+       refused outright for a STOP text or a deletion request. */
     async dnc(store, q, body) {
-      const r = ID.test(q.id || '') ? await store.setDoNotContact(q.id, body.value === true) : null;
-      return r ? r : [404, { error: 'No such business.' }];
+      const r = ID.test(q.id || '') ? await store.setDoNotContact(q.id, body.value === true, { confirm: body.confirm === true }) : null;
+      if (!r) return [404, { error: 'No such business.' }];
+      return r.refused ? [409, { error: r.refused }] : r;
     }
   };
 

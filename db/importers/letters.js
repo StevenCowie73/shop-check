@@ -57,6 +57,16 @@ async function importLetters({ html, table, store, sentAt = null, runId = null, 
       throw new Error('letter ' + (i + 1) + ' does not name the business in row ' + (i + 1) + '; not importing.');
     }
   }
+  /* No draft is ever made for a business on the do-not-contact list (by
+     its own flag or a list entry matching its phone or address). Checked
+     for every letter before anything is written; drop it from the run
+     (out/exclusions.json) and render again. A record of a letter already
+     sent is still imported: it happened. */
+  if (!sentAt && store.doNotContactAmong) {
+    const dnc = await store.doNotContactAmong(table.map(t => t.ref));
+    if (dnc.length) throw new Error(dnc.length + ' of these letters ' + (dnc.length === 1 ? 'is' : 'are') + ' to a business marked do not contact (' +
+      dnc.join(', ') + '); not importing. Exclude ' + (dnc.length === 1 ? 'it' : 'them') + ' and render again.');
+  }
   /* A draft import replaces each business's draft in place, and refuses
      before writing anything if any of them has been approved or sent. */
   if (!mock && !sentAt && store.existingLetters) {

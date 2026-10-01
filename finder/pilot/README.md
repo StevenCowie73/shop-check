@@ -184,6 +184,33 @@ lib/rank.js      the four signals and their weights
 1..10-*.js       the chain, in order
 ```
 
+## Do not contact
+
+The letter says "Text STOP to the number above and you won't hear from me
+again". The do-not-contact list keeps that promise across every run and
+area (`lib/suppression.js`, the `suppressions` table, migration 004).
+
+- An entry is keyed by phone number (10 digits) and mailing address (street
+  and ZIP, normalised). Any prospect matching a live entry is do not
+  contact, including a business found again in a later run or another area.
+  A re-import never clears the flag.
+- A STOP text (or STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE, OPTOUT)
+  to the business number goes on the list as it arrives (`api/twilio/sms.js`).
+  So do the address of any prospect whose number it is, and a line on its
+  timeline. A number that matches nobody is kept anyway. If recording fails,
+  the owner is texted and `node db/suppression.js --sync-twilio --https --confirm`
+  catches up from Twilio's log.
+- Ticking "Do not contact" in Explorer puts the business's phone and address
+  on the list. Unticking asks first, and the server refuses it without that
+  confirm. It also refuses for good when the entry came from a STOP text or
+  a deletion request.
+- No draft is imported for a business on the list, approval refuses it, and
+  `lib/lob.js` refuses to send it. Any new way of contacting a prospect,
+  email included, must check `whyNotContactable()` or `suppressedSql()` first.
+- A deletion request: `node db/suppression.js --add --reason deletion_request
+  --prospect ID --https --confirm` before deleting anything.
+- `node db/suppression.js --status --https --confirm` prints counts only.
+
 ## Sending through Lob
 
 Nothing is mailed by the pipeline. A letter is sent one at a time, from the

@@ -379,13 +379,35 @@ test('an empty or overlong note is refused', async () => {
   assert.strictEqual(store._snapshot().notes.length, 2);
 });
 
-test('the do-not-contact flag sets and clears', async () => {
+test('the do-not-contact flag sets in one tap, and clears only with an explicit confirm', async () => {
   const { call, store } = setup();
   const id = store._snapshot().prospects[1].id;
   await call('/explorer?action=dnc&id=' + id, { method: 'POST', body: { value: true } });
-  assert.strictEqual((await call('/explorer?action=business&id=' + id)).json().business.doNotContact, true);
-  await call('/explorer?action=dnc&id=' + id, { method: 'POST', body: { value: false } });
+  const b = (await call('/explorer?action=business&id=' + id)).json().business;
+  assert.strictEqual(b.doNotContact, true);
+  assert.ok(b.timeline.some(e => e.kind === 'do_not_contact' && e.text === 'Marked do not contact by hand'));
+  assert.ok(store._snapshot().suppressions.some(e => e.prospectId === id && e.reason === 'by_hand'), 'it went on the list');
+
+  const off = await call('/explorer?action=dnc&id=' + id, { method: 'POST', body: { value: false } });
+  assert.strictEqual(off.statusCode, 409);
+  assert.match(off.json().error, /explicit confirm/);
+  assert.strictEqual((await call('/explorer?action=business&id=' + id)).json().business.doNotContact, true, 'still on');
+
+  await call('/explorer?action=dnc&id=' + id, { method: 'POST', body: { value: false, confirm: true } });
   assert.strictEqual((await call('/explorer?action=business&id=' + id)).json().business.doNotContact, false);
+  assert.ok(store._snapshot().suppressions.filter(e => e.prospectId === id).every(e => e.revokedAt), 'the entry is revoked, and kept');
+});
+
+test('a business that texted STOP cannot be taken off by hand, even with confirm', async () => {
+  const { call, store } = setup();
+  const p = store._snapshot().prospects.find(x => x.phone);
+  await store.recordOptOut({ from: p.phone, word: 'STOP', messageSid: 'SMdemo0001' });
+  const off = await call('/explorer?action=dnc&id=' + p.id, { method: 'POST', body: { value: false, confirm: true } });
+  assert.strictEqual(off.statusCode, 409);
+  assert.match(off.json().error, /texted STOP/);
+  const b = (await call('/explorer?action=business&id=' + p.id)).json().business;
+  assert.strictEqual(b.doNotContact, true);
+  assert.ok(b.timeline.some(e => e.text === 'Marked do not contact: texted STOP'));
 });
 
 test('the seeded notes and flag are there', async () => {

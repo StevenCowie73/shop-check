@@ -107,6 +107,11 @@ const routes = {
   screenResult: require('../api/twilio/screen-result.js')
 };
 
+/* The do-not-contact list lives in a database. Here it is a list in
+   memory, set before any test runs, so no test can reach a real one. */
+const optOuts = [];
+routes.sms.deps.recordOptOut = async entry => { optOuts.push(entry); return { recorded: true }; };
+
 /* ---------- the gate ---------- */
 
 test('every route refuses a bad signature with 403', async () => {
@@ -457,6 +462,58 @@ test('STOP from a customer is forwarded but never answered', async () => {
     assert.strictEqual(sent[0].To, OWNER, 'only ever the owner, never the sender');
     assert.strictEqual(res.body.includes('<Message'), false);
   }));
+});
+
+test('STOP from a customer goes on the do-not-contact list, and is still forwarded', async () => {
+  optOuts.length = 0;
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(CALLER, 'STOP', { MessageSid: 'SMstop0001' }), fakeRes());
+    assert.strictEqual(optOuts.length, 1);
+    assert.strictEqual(optOuts[0].from, CALLER);
+    assert.strictEqual(optOuts[0].word, 'STOP');
+    assert.strictEqual(optOuts[0].messageSid, 'SMstop0001', 'the sid makes recording it twice harmless');
+    assert.strictEqual(sent.length, 1, 'only the forward');
+    assert.strictEqual(sent[0].To, OWNER);
+  }));
+});
+
+test('every opt-out word counts, however it is typed; a sentence that merely contains one does not', async () => {
+  for (const [body, extra, word] of [
+    ['stop', {}, 'STOP'], ['  Unsubscribe. ', {}, 'UNSUBSCRIBE'], ['STOPALL', {}, 'STOPALL'], ['Cancel', {}, 'CANCEL'],
+    ['end', {}, 'END'], ['QUIT!', {}, 'QUIT'], ['revoke', {}, 'REVOKE'], ['opt-out', {}, 'OPTOUT'],
+    ['Please take me off your list', { OptOutType: 'STOP' }, 'STOP'],
+    ['Can you stop by on Tuesday?', {}, null], ['End of the week works', {}, null], ['START', {}, null], ['HELP', {}, null]
+  ]) {
+    optOuts.length = 0;
+    await withEnv(CONFIGURED, () => fakeTwilio(async () => { await routes.sms(smsFrom(OTHER, body, extra), fakeRes()); }));
+    assert.deepStrictEqual(optOuts.map(o => o.word), word ? [word] : [], JSON.stringify(body));
+  }
+});
+
+test("the owner's own STOP is left to Twilio and never put on the list", async () => {
+  optOuts.length = 0;
+  await withEnv(CONFIGURED, () => fakeTwilio(async () => { await routes.sms(smsFrom(OWNER, 'STOP'), fakeRes()); }));
+  assert.strictEqual(optOuts.length, 0);
+});
+
+test('if a STOP cannot be recorded, the owner is told in one line and the forward still goes', async () => {
+  const real = routes.sms.deps.recordOptOut;
+  const logged = [], err = console.error;
+  routes.sms.deps.recordOptOut = async () => { throw new Error('connect failed for postgresql://someone:secret@db.example.test/x'); };
+  console.error = m => logged.push(String(m));
+  try {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      const res = fakeRes();
+      await routes.sms(smsFrom(CALLER, 'STOP'), res);
+      assert.strictEqual(sent.length, 2);
+      assert.ok(sent.every(m => m.To === OWNER), 'nothing to the sender');
+      assert.match(sent[0].Body, /texted STOP but it could not be put on the do-not-contact list/);
+      assert.strictEqual(res.body.includes('<Message'), false);
+    }));
+  } finally { routes.sms.deps.recordOptOut = real; console.error = err; }
+  assert.ok(logged.some(l => /do-not-contact list/.test(l)));
+  assert.ok(logged.every(l => !l.includes('secret') && !l.includes('postgresql://')), 'the database URL never reaches a log');
+  assert.ok(logged.every(l => !l.includes('5550102')), 'the log shows the last four digits only');
 });
 
 test("the owner's own texts are never forwarded back to the owner", async () => {

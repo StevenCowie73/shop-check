@@ -14,13 +14,54 @@
    STOP, START and HELP are Twilio's: it answers them before and regardless
    of this route. Nothing here replies to a sender, so we can never text
    somebody who has just asked us to stop, and a keyword the owner sends is
-   never relayed to anybody. */
+   never relayed to anybody.
+
+   An opt-out word from anyone but the owner also goes on the
+   do-not-contact list (lib/suppression.js), so it stops letters and every
+   other kind of contact, not only texts: the letter promises "Text STOP to
+   the number above and you won't hear from me again". If it cannot be
+   recorded, the owner is told in one line, and
+   node db/suppression.js --sync-twilio picks it up from Twilio's log. */
 
 const {
   authorize, twiml, sendSms, isE164, hasContacted, lastContact
 } = require('../../lib/twilio.js');
 const { forwardedText, NOT_SENT } = require('../../lib/texting-copy.js');
 const { parseReply, formatUS, isKeyword } = require('../../lib/reply-through.js');
+const { optOutWord, maskPhone } = require('../../lib/suppression.js');
+
+/* The do-not-contact list lives in the database, whatever EXPLORER_DATA
+   says Explorer reads. One pool per instance. Tests replace deps. */
+let pgStore = null;
+const deps = {
+  async recordOptOut(entry) {
+    const { databaseUrl } = require('../../lib/explorer/store.js');
+    const url = databaseUrl();
+    if (!url) throw new Error('no database is configured');
+    if (!pgStore) {
+      const { Pool } = require('pg');
+      const { createPgStore } = require('../../lib/explorer/pg-store.js');
+      pgStore = createPgStore(new Pool({ connectionString: url, max: 1, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true } }));
+    }
+    return pgStore.recordOptOut(entry);
+  }
+};
+
+/* Never throws: a STOP must not break the forward, and a failure to record
+   it must not stay silent. */
+async function recordOptOut({ sid, token, businessNumber, ownerCell, from, word, messageSid }) {
+  try {
+    await deps.recordOptOut({ from, word, messageSid: messageSid || null, at: new Date().toISOString() });
+  } catch (err) {
+    console.error('could not put ' + maskPhone(from) + ' on the do-not-contact list: ' + String(err && err.message).replace(/postgres(ql)?:\/\/\S+/g, '[url]'));
+    try {
+      await sendSms({ sid, token, from: businessNumber, to: ownerCell,
+        body: 'ColdenJames: ' + formatUS(from) + ' texted ' + word + ' but it could not be put on the do-not-contact list. Run db/suppression.js --sync-twilio.' });
+    } catch (e) {
+      console.error('could not tell the owner either: ' + (e && e.message));
+    }
+  }
+}
 
 const same = (a, b) => String(a || '').trim() === String(b || '').trim();
 
@@ -66,7 +107,7 @@ async function relayReply({ sid, token, businessNumber, ownerCell, body }) {
   }
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   const gate = await authorize(req, res, { needOwnerCell: true });
   if (!gate) return;
 
@@ -78,6 +119,8 @@ module.exports = async function handler(req, res) {
   if (!same(from, ownerCell)) {
     const media = Number(params.NumMedia || 0);
     const message = body || (media > 0 ? '(picture or attachment)' : '');
+    const word = optOutWord(body, params.OptOutType);
+    if (word) await recordOptOut({ sid, token, businessNumber, ownerCell, from, word, messageSid: params.MessageSid });
     await forwardToOwner({ sid, token, businessNumber, ownerCell, from, message });
   } else if (!isKeyword(body) && isE164(businessNumber)) {
     const problem = await relayReply({ sid, token, businessNumber, ownerCell, body });
@@ -92,4 +135,7 @@ module.exports = async function handler(req, res) {
 
   /* Empty on purpose: the sender never gets an automatic reply. */
   twiml(res, '');
-};
+}
+
+module.exports = handler;
+module.exports.deps = deps;
