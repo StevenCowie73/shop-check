@@ -48,7 +48,7 @@ test('an approved letter goes to Lob once, as a one-page PDF with both addresses
   assert.strictEqual(url, 'https://api.lob.com/v1/letters');
   assert.strictEqual(init.method, 'POST');
   assert.strictEqual(init.headers.Authorization, 'Basic ' + Buffer.from('test_abc123:').toString('base64'), 'key as username, blank password');
-  assert.strictEqual(init.headers['Idempotency-Key'], 'coldenjames-letter-7-test');
+  assert.match(init.headers['Idempotency-Key'], /^coldenjames-letter-7-test-[0-9a-f]{24}$/);
   assert.match(init.headers['Content-Type'], /^multipart\/form-data; boundary=/);
   const body = init.body.toString('latin1');
   const field = name => { const m = new RegExp('name="' + name.replace(/[[\]]/g, '\\$&') + '"\\r\\n\\r\\n([^\\r]*)').exec(body); return m && m[1]; };
@@ -84,6 +84,20 @@ test('nothing that is not approved is ever sent', async () => {
   }
 });
 
+test('the Idempotency-Key repeats for a retry of the same letter, and changes when the letter is re-rendered or re-addressed', async () => {
+  const keyOf = async over => { const h = harness(); await send(h, over); return h.calls[0].init.headers['Idempotency-Key']; };
+  const first = await keyOf();
+  assert.strictEqual(await keyOf(), first, 'a retry of the same letter reuses its key, so Lob makes one letter');
+  const rerendered = await keyOf({ letter: approved({ html: approved().html.replace('Hello', 'Hello again') }) });
+  assert.notStrictEqual(rerendered, first, 'a re-render is a new send, never matched to the earlier one');
+  assert.match(rerendered, /^coldenjames-letter-7-test-/, 'still the same letter and mode');
+  assert.notStrictEqual(await keyOf({ letter: approved({ to: { ...approved().to, line1: '14 Invented Rd' } }) }), first, 'so is a new address');
+  assert.notStrictEqual(await keyOf({ from: { ...FROM, line1: '200 Invented Plaza Ste 5' } }), first, 'and a new return address');
+  assert.notStrictEqual(await keyOf({ key: 'live_abc', live: true }), first, 'and the other mode');
+  assert.ok(first.length <= 255, 'within Lob\'s length');
+  assert.strictEqual(lob.idempotencyKey({ id: 7, html: '<p>a</p>' }, 'test', {}, {}), lob.idempotencyKey({ id: 7, html: '<p>a</p>' }, 'test', {}, {}));
+});
+
 test('a live key needs the LIVE flag, and the LIVE flag needs a live key', async () => {
   let h = harness();
   await assert.rejects(send(h, { key: 'live_abc' }), /live Lob key and the LIVE flag is not set/);
@@ -94,7 +108,7 @@ test('a live key needs the LIVE flag, and the LIVE flag needs a live key', async
   h = harness();
   const r = await send(h, { key: 'live_abc', live: true });
   assert.strictEqual(r.mode, 'live');
-  assert.strictEqual(h.calls[0].init.headers['Idempotency-Key'], 'coldenjames-letter-7-live');
+  assert.match(h.calls[0].init.headers['Idempotency-Key'], /^coldenjames-letter-7-live-[0-9a-f]{24}$/);
 });
 
 test('a proxy-injected key must be declared, and is never sent by us', async () => {
