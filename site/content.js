@@ -143,9 +143,10 @@ const HOME = {
 const GOOGLE_PRIVACY = 'https://policies.google.com/privacy';
 const GOOGLE_MAPS_TERMS = 'https://maps.google.com/help/terms_maps/';
 
-/* The date the privacy policy and terms were last brought into line with
-   what the system does. Shown under each title. The /sms page keeps its
-   own date (UPDATED above). */
+/* The date each legal page was last brought into line with what the
+   system does, shown under its title. The terms keep LEGAL_UPDATED; the
+   privacy policy has its own (PRIVACY.updated) since it changed alone.
+   The /sms page keeps its own date (UPDATED above). */
 const LEGAL_UPDATED = 'September 25, 2026';
 
 /* The sentence below is required word for word by the mobile carriers who
@@ -162,6 +163,7 @@ const WHO_WE_ARE =
 
 const PRIVACY = {
   title: 'Privacy Policy',
+  updated: 'October 1, 2026',
   intro:
     'This explains what ColdenJames collects, where it comes from, why, and ' +
     'what we do not do with it. If anything here is unclear, email ' +
@@ -293,9 +295,10 @@ const PRIVACY = {
         'phone number it concerns. We will delete what we hold, including ' +
         'call and text records, except anything we are required to keep for ' +
         'tax or legal records, and we will tell you what that was.',
-        'If you are a business we wrote to, we keep only your business name ' +
-        'and its reference code after that, so the code is never given to ' +
-        'anyone else and we do not write to you again.',
+        'If you ask us to delete your information, we keep only your ' +
+        'business name and reference code, plus your phone number and ' +
+        'mailing address on our do-not-contact list. We keep that list only ' +
+        'so we never contact you again, and we use it for nothing else.',
         'If you are a client and you leave, your website and its domain stay ' +
         'yours, and you can ask us to delete everything else.'
       ]

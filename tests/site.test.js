@@ -213,11 +213,22 @@ test('the privacy policy carries the sentence the carriers require, verbatim', (
   assert.ok(html.includes('COWIE.AI LLC'));
 });
 
+test('the privacy policy says what a deletion keeps: the do-not-contact list, and what it is for', () => {
+  const html = fs.readFileSync(path.join(OUT, 'privacy.html'), 'utf8');
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/&#39;|&rsquo;|’/g, "'").replace(/\s+/g, ' ');
+  assert.ok(text.includes('If you ask us to delete your information, we keep only your business name and reference code, ' +
+    'plus your phone number and mailing address on our do-not-contact list. We keep that list only so we never contact you again, ' +
+    'and we use it for nothing else.'));
+  assert.ok(!text.includes('so the code is never given to anyone else and we do not write to you again'), 'the old sentence is gone');
+  assert.strictEqual(C.PRIVACY.updated, 'October 1, 2026');
+  assert.strictEqual(C.LEGAL_UPDATED, 'September 25, 2026', 'the terms did not change, so their date did not either');
+});
+
 test('neither legal page is marked as a draft, and each is dated under its title', () => {
-  for (const name of ['privacy.html', 'terms.html']) {
+  for (const [name, date] of [['privacy.html', C.PRIVACY.updated], ['terms.html', C.LEGAL_UPDATED]]) {
     const html = fs.readFileSync(path.join(OUT, name), 'utf8');
     assert.strictEqual(/draft|to be reviewed/i.test(html), false, name);
-    assert.match(html, new RegExp('</h1>\\s*<p class="updated">Last updated: ' + C.LEGAL_UPDATED + '</p>'), name);
+    assert.match(html, new RegExp('</h1>\\s*<p class="updated">Last updated: ' + date + '</p>'), name);
     assert.strictEqual((html.match(/Last updated/g) || []).length, 1, name + ' has one date');
   }
 });
