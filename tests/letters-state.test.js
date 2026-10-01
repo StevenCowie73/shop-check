@@ -9,7 +9,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const { createPgStore, draftReplacement, whyNotUnapprove } = require('../lib/explorer/pg-store.js');
+const { createPgStore, draftReplacement, whyNotUnapprove, whyNotClearTestLob } = require('../lib/explorer/pg-store.js');
 const { createDemoStore } = require('../lib/explorer/demo-store.js');
 const { importLetters } = require('../db/importers/letters.js');
 
@@ -104,6 +104,43 @@ test('letters-unapprove refuses to start without a letter id', () => {
   const { execFileSync } = require('node:child_process');
   let err = null;
   try { execFileSync(process.execPath, [path.join(__dirname, '..', 'db', 'letters-unapprove.js'), '--confirm'], { stdio: 'pipe' }); }
+  catch (e) { err = e; }
+  assert.ok(err && /--letter ID is required/.test(String(err.stderr)));
+});
+
+test('only a draft carrying a test Lob id has it cleared; real mail keeps its id', () => {
+  const l = over => ({ id: 4, state: 'draft', sentAt: null, lobLetterId: 'ltr_test2', lobMode: 'test', ...over });
+  assert.strictEqual(whyNotClearTestLob(l()), null);
+  assert.match(whyNotClearTestLob(l({ lobLetterId: 'ltr_live2', lobMode: 'live' })), /has been mailed/);
+  assert.match(whyNotClearTestLob(l({ state: 'sent', sentAt: '2026-10-01T00:00:00Z' })), /has been mailed/);
+  assert.match(whyNotClearTestLob(l({ state: 'approved' })), /is approved; only a draft/);
+  assert.match(whyNotClearTestLob(l({ lobLetterId: null, lobMode: null })), /no Lob id/);
+  assert.match(whyNotClearTestLob(l({ lobMode: null })), /not marked test/);
+  assert.match(whyNotClearTestLob(null), /No such letter/);
+});
+
+test('pg store: clearing a test Lob id empties every Lob column, guarded in the UPDATE itself', async () => {
+  const row = over => ({ id: 4, state: 'draft', sent_at: null, lob_letter_id: 'ltr_test2', lob_mode: 'test', ...over });
+  const ok = scriptedPool(t => /^\s*SELECT id, state, sent_at/.test(t) ? [row()] : /^\s*UPDATE letters SET lob_letter_id = NULL/.test(t) ? [{ id: 4 }] : []);
+  assert.deepStrictEqual(await createPgStore(ok).clearTestLob(4), { id: 4, cleared: 'ltr_test2' });
+  const upd = ok.sql.find(s => /^UPDATE/.test(s.text));
+  assert.match(upd.text, /SET lob_letter_id = NULL, lob_mode = NULL, expected_delivery_date = NULL, lob_sent_at = NULL WHERE/);
+  assert.match(upd.text, /state = 'draft' AND sent_at IS NULL AND lob_mode = 'test' AND lob_letter_id = \$2/);
+  assert.deepStrictEqual(upd.params, [4, 'ltr_test2']);
+
+  for (const over of [{ lob_mode: 'live', lob_letter_id: 'ltr_live2' }, { state: 'approved' }, { lob_letter_id: null, lob_mode: null }]) {
+    const pool = scriptedPool(t => /^\s*SELECT id, state, sent_at/.test(t) ? [row(over)] : []);
+    await assert.rejects(createPgStore(pool).clearTestLob(4));
+    assert.strictEqual(pool.sql.some(s => /^UPDATE/.test(s.text)), false, 'refused before any write');
+  }
+  const raced = scriptedPool(t => /^\s*SELECT id, state, sent_at/.test(t) ? [row()] : []);
+  await assert.rejects(createPgStore(raced).clearTestLob(4), /changed while its test Lob id was being cleared/);
+});
+
+test('letters-clear-test refuses to start without a letter id', () => {
+  const { execFileSync } = require('node:child_process');
+  let err = null;
+  try { execFileSync(process.execPath, [path.join(__dirname, '..', 'db', 'letters-clear-test.js'), '--confirm'], { stdio: 'pipe' }); }
   catch (e) { err = e; }
   assert.ok(err && /--letter ID is required/.test(String(err.stderr)));
 });

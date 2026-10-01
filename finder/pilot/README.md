@@ -195,6 +195,12 @@ node db/lob-send.js --letter ID --https --confirm          # test key
 node db/lob-send.js --letter ID --https --live --confirm   # real mail
 ```
 
+`node db/letters-unapprove.js --letter ID --https --confirm` takes an approved
+letter back to draft. It keeps a test send's Lob id as the record of that
+proof. Once the letter has been re-rendered, that proof no longer matches it,
+and `node db/letters-clear-test.js --letter ID --https --confirm` clears the
+test id from the draft. Neither command touches a live id or a sent letter.
+
 `lib/lob.js` refuses anything not approved, a mock, a letter already mailed,
 a business marked do not contact, a live key without `--live` (and `--live`
 with a test key), an incomplete return or recipient address, a letter still
