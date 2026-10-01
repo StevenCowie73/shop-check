@@ -31,7 +31,8 @@
     "pilot:merge": "node finder/pilot/9-merge-astra.js",
     "pilot:letters": "node finder/pilot/10-render-letters.js",
     "pilot:verify": "node finder/pilot/verify-letters.js",
-    "pilot:rebuild": "npm run pilot:spine && npm run pilot:shortlist && npm run pilot:email && npm run pilot:rules && npm run pilot:merge && npm run pilot:letters && npm run pilot:verify"
+    "pilot:zones": "node finder/pilot/check-zones.js",
+    "pilot:rebuild": "npm run pilot:spine && npm run pilot:shortlist && npm run pilot:email && npm run pilot:rules && npm run pilot:merge && npm run pilot:letters && npm run pilot:verify && npm run pilot:zones"
   },
   "devDependencies": {
     "jsqr": "^1.4.0",

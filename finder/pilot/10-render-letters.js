@@ -139,10 +139,12 @@ function letterHtml(row, rec, code) {
   <p>I'm Steven, here in ${esc(hereIn(rec))}. I set up a simple fix for that. When you miss a call, the caller gets a text from ${esc(biz)} straight away, so they know you'll get back to them. You reply when you're off the job.</p>
   <p>You can try it on me. Call the number at the bottom of this letter, and if I can't pick up, you'll get the text yourself.</p>
   ${website.text ? `<p>${esc(website.text)}</p>` : ''}
-  <p>${esc(pageLine)}</p>
   <div class="qrblock">
     <img class="qr" src="${code.image}" alt="">
-    <p class="url">${esc(code.printed)}</p>
+    <div class="qrtext">
+      <p>${esc(pageLine)}</p>
+      <p class="url">${esc(code.printed)}</p>
+    </div>
   </div>
   <p>$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name. The first month is free, there's no contract, and you can cancel with a text. I do the setup. The one thing you'd do is change a setting on your phone, and I'll walk you through it.</p>
   <p>If it's not for you, no hard feelings. If it is, text me.</p>
@@ -187,8 +189,10 @@ body {
      clear space        1/16in on every side
    So nothing of ours goes left of 4.625in above 2.84in: the letterhead and
    date sit top right, clear of both windows, and the letter starts at 3in.
-   The folds (C-fold, at about 3.75in and 7.75in) must not cut the QR.
-   tests/lob.test.js measures all of this in a real render. */
+   The folds (C-fold, nominally 3.75in and 7.75in) must not cut the QR, and
+   the lower one may land anywhere from 7.2in to 7.9in. lib/lob-layout.js
+   holds these zones; tests/lob.test.js measures an invented worst case and
+   finder/pilot/check-zones.js measures every real letter. */
 .page {
   width: 8.5in; height: 11in; box-sizing: border-box;
   padding: 2.98in 0.8in 0.45in 0.85in;
@@ -207,13 +211,17 @@ p { margin: 0 0 8pt; }
 .rule { flex: none; height: 1.3pt; background: #C4501B; width: 100%; margin: 10pt 0 12pt; }
 .date { font-size: 10.5pt; margin: 0; }
 .greeting { font-weight: 600; font-size: 12pt; margin-bottom: 13pt; }
+/* The line that introduces the page sits beside the QR, over the address
+   it prints, rather than above it: that lifts the QR a full line, clear of
+   a lower fold anywhere from 7.2in to 7.9in (lib/lob-layout.js). */
 .qrblock { flex: none; margin: 2pt 0 10pt; display: flex; align-items: center; gap: 14pt; }
+.qrtext p { margin: 0 0 3pt; }
 /* A real code, drawn at 720px and printed into one inch, so the printer
    rather than the image decides how fine the modules are. No border: the
    quiet zone is inside the image and a rule drawn against it is exactly what
    a scanner does not want. */
 .qr { flex: none; display: block; width: 1in; height: 1in; }
-.url { font-size: 10.5pt; margin: 0; }
+.qrtext .url { font-size: 10.5pt; margin: 0; }
 .sig { margin-top: 14pt; margin-bottom: 0; }
 /* Directly under the number, small: what a caller agrees to by calling. */
 .smsnote { font-size: 8.5pt; line-height: 1.45; color: #57534E; margin: 3pt 0 0; text-wrap: balance; }

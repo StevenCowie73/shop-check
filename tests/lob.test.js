@@ -6,10 +6,6 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 
 const lob = require('../lib/lob.js');
 
@@ -161,17 +157,10 @@ test('the envelope reads as the letter does: title case, no LLC', () => {
 
 /* ---------- the template against Lob's page one ---------- */
 
-/* From Lob's letter template (help.lob.com, letter_template_updated 4_25),
-   in inches from the top-left corner: [left, top, right, bottom]. */
-const LOB_ZONES = {
-  'address box (printed over)': [0.6, 0.84, 3.75, 2.84],
-  'top envelope window': [0.625, 0.5, 3.875, 1.375],
-  'bottom envelope window': [0.625, 1.708, 4.625, 2.708],
-  'barcode box': [0.087, 10.413, 0.587, 10.913],
-  'serial number strip': [0.202, 8.748, 0.293, 10.204]
-};
-const SAFE = 1 / 16;
-const FOLDS = [3.75, 7.75];
+/* Lob's zones, the folds and the measuring all live in lib/lob-layout.js,
+   shared with finder/pilot/check-zones.js, which runs the same check on
+   every real letter. */
+const layout = require('../lib/lob-layout.js');
 
 const { findChrome, letterHtml, pageCss } = require('../finder/pilot/10-render-letters.js');
 const chrome = findChrome();
@@ -188,42 +177,38 @@ function inventedLetter(qrImage) {
   return html;
 }
 
-test('nothing on page one lands in Lob\'s address area, windows or barcode corner; the QR clears the folds; it is one page',
+test('nothing on page one lands in Lob\'s address area, windows or barcode corner; the QR clears both folds; it is one page',
   { skip: chrome ? false : 'no Chromium on this machine' }, async () => {
     const { qrDataUri } = require('../lib/qr.js');
-    const measure = `<script>
-      addEventListener('load', () => {
-        const i = v => +(v / 96).toFixed(3);
-        const boxes = [...document.querySelectorAll('.page *')].filter(e => e.getClientRects().length && e.tagName !== 'BR')
-          .map(e => { const r = e.getBoundingClientRect(); return { el: e.tagName + '.' + (e.getAttribute('class') || ''), b: [i(r.left), i(r.top), i(r.right), i(r.bottom)] }; })
-          .filter(x => x.b[2] > x.b[0] && x.b[3] > x.b[1]);
-        document.body.setAttribute('data-boxes', JSON.stringify(boxes));
-        document.body.setAttribute('data-height', i(document.querySelector('.page').scrollHeight));
-      });</script>`;
     const html = '<!doctype html><html><head><meta charset="utf-8"><style>' + pageCss('') + '</style></head><body>' +
-      inventedLetter(await qrDataUri('https://coldenjames.com/p/DEMO2026?c=letter')) + measure + '</body></html>';
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lob-layout-'));
-    try {
-      fs.writeFileSync(path.join(dir, 'l.html'), html);
-      const dom = execFileSync(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--window-size=816,1056',
-        '--virtual-time-budget=5000', '--dump-dom', 'file://' + path.join(dir, 'l.html')], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-      const attr = name => JSON.parse(/<body[^>]*\sdata-[^>]*>/.exec(dom)[0].match(new RegExp(name + '="([^"]*)"'))[1].replace(/&quot;/g, '"'));
-      const boxes = attr('data-boxes');
-      assert.ok(boxes.length > 15, 'the page was measured');
-      assert.ok(attr('data-height') <= 11, 'one page: the letter is ' + attr('data-height') + 'in tall');
-      const hit = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
-      for (const { el, b } of boxes) {
-        for (const [zone, z] of Object.entries(LOB_ZONES)) assert.ok(!hit(b, z), el + ' ' + JSON.stringify(b) + ' is in the ' + zone);
-        assert.ok(b[0] >= SAFE && b[1] >= SAFE && b[2] <= 8.5 - SAFE && b[3] <= 11 - SAFE, el + ' is outside the 1/16in clear space');
-      }
-      const qr = boxes.find(x => x.el === 'IMG.qr').b;
-      for (const f of FOLDS) assert.ok(qr[3] < f - 0.1 || qr[1] > f + 0.1, 'the QR ' + JSON.stringify(qr) + ' crosses the fold at ' + f + 'in');
-      assert.ok(boxes.some(x => x.el === 'P.greeting' && x.b[1] >= 2.84), 'the letter starts below the address area');
+      inventedLetter(await qrDataUri('https://coldenjames.com/p/DEMO2026?c=letter')) + '</body></html>';
+    const pages = layout.measure(html, chrome);
+    assert.strictEqual(pages.length, 1);
+    assert.deepStrictEqual(layout.problems(pages[0]), []);
+    const qr = pages[0].boxes.find(x => x.el === 'IMG.qr').b;
+    assert.ok(qr[3] < 7.2 - layout.FOLD_MARGIN, 'the QR ' + JSON.stringify(qr) + ' sits above a lower fold anywhere from 7.2in');
+    assert.ok(qr[1] > 3.75 + layout.FOLD_MARGIN, 'and below the upper fold');
 
-      const pdf = require('../lib/letter-pdf.js').renderLetterPdf(html, { chrome });
-      assert.deepStrictEqual(lob.checkPdf(pdf).pages, 1);
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const pdf = require('../lib/letter-pdf.js').renderLetterPdf(html, { chrome });
+    assert.deepStrictEqual(lob.checkPdf(pdf).pages, 1);
   });
+
+test('the zone check catches a QR anywhere in the 7.2in to 7.9in fold band, and anything in the address box', () => {
+  const page = qrTop => ({ height: 11, boxes: [
+    { el: 'P.greeting', b: [0.85, 3, 3, 3.2] },
+    ...Array.from({ length: 15 }, (_, k) => ({ el: 'P.', b: [0.85, 3.3 + k * 0.1, 7.7, 3.35 + k * 0.1] })),
+    { el: 'IMG.qr', b: [0.85, qrTop, 1.85, qrTop + 1] }] });
+  assert.deepStrictEqual(layout.problems(page(5.9)), [], 'bottom at 6.9in is clear');
+  for (const top of [6.2, 6.5, 6.9, 7.3, 7.95]) {
+    assert.ok(layout.problems(page(top)).some(p => /fold at 7\.2-7\.9in/.test(p)), 'a QR from ' + top + 'in to ' + (top + 1) + 'in is caught');
+  }
+  assert.deepStrictEqual(layout.problems(page(8.05)), [], 'wholly below the band is clear too');
+  assert.ok(layout.problems(page(3)).some(p => /fold at 3\.75in/.test(p)));
+  const p = page(5.9);
+  p.boxes.push({ el: 'P.bizaddr', b: [1, 1, 3, 1.3] });
+  assert.ok(layout.problems(p).some(x => /address box/.test(x)));
+  assert.ok(layout.problems({ ...page(5.9), height: 11.2 }).some(x => /two pages/.test(x)));
+});
 
 test('the letterhead carries the mailbox, one envelope line at a time, and no placeholder', () => {
   const html = inventedLetter('data:image/png;base64,');
