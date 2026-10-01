@@ -230,13 +230,17 @@ test('the letterhead carries the mailbox, one envelope line at a time, and no pl
   assert.doesNotThrow(() => lob.assertNoPlaceholder(html));
 });
 
+test('the letter turns ligatures off, so "fi" and "fl" copy out as plain letters', () => {
+  assert.match(pageCss(''), /body \{[^}]*font-variant-ligatures: none;/);
+});
+
 test('the template keeps the approved wording', () => {
   const html = inventedLetter('data:image/png;base64,');
   for (const line of [
     "When you're on a job and the phone rings, you can't always get to it. Most people who get voicemail don't leave a message. They call the next roofer.",
     "I'm Steven, here in Bossier City. I set up a simple fix for that.",
     'You can try it on me. Call the number at the bottom of this letter, and if I can\'t pick up, you\'ll get the text yourself.',
-    'I made a page for you showing what I found and how it would work:',
+    "I made a page for you showing what I found and how it would work. Point your phone's camera at the code, or type in the address:",
     "$79 a month covers three things: the missed-call text, a text asking your customers for a review, and a simple website that works on a phone, registered in your name.",
     "If it's not for you, no hard feelings. If it is, text me.",
     'Sent to the mailing address on your state contractor license.'

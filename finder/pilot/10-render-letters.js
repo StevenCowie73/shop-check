@@ -123,7 +123,7 @@ function letterHtml(row, rec, code) {
   const trade = tradeNoun(row.company);
   const website = websiteParagraph(rec, row);
   const pageLine = website.text
-    ? 'I made a page for you showing what I found and how it would work:'
+    ? "I made a page for you showing what I found and how it would work. Point your phone's camera at the code, or type in the address:"
     : 'I made a page for you showing how it would work:';
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -176,6 +176,9 @@ body {
   font-size: 11.5pt;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* No ligatures: Plex joins "fi" and "fl" into one glyph, which copies out
+     of the PDF as a single odd character instead of two letters. */
+  font-variant-ligatures: none;
 }
 /* Lob prints the envelope addresses on page one (address_placement
    top_first_page) and they show through a #10 double-window envelope.
