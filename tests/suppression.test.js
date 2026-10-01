@@ -212,3 +212,22 @@ test('backfill keys every prospect it can', () => {
   assert.deepStrictEqual(keysFor([{ id: 'KL1', phone: PHONE_A, mailing_street: '12 Invented Rd', mailing_zip: '71105' }, { id: 'X', phone: '', mailing_street: '', mailing_zip: '' }]),
     { ids: ['KL1', 'X'], phones: ['3185550161', null], addresses: ['12 invented rd|71105', null] });
 });
+
+/* ---------- the note on the business line ---------- */
+
+test('looking a number up: a do-not-contact prospect gives its company, a listed stranger gives none, anyone else nothing', async () => {
+  const store = createDemoStore(seed());
+  assert.strictEqual(await store.doNotContactByPhone('+13185550161'), null, 'not marked yet');
+  await store.setDoNotContact('KL1', true);
+  assert.deepStrictEqual(await store.doNotContactByPhone('+13185550161'), { company: 'Kestrel Lane Roofing LLC' });
+  assert.deepStrictEqual(await store.doNotContactByPhone('+13185550162'), { company: 'Marmot Point Builders' }, 'same address, so the same business');
+  await store.recordOptOut({ from: '+13185550199', word: 'STOP' });
+  assert.deepStrictEqual(await store.doNotContactByPhone('+13185550199'), { company: null });
+  assert.strictEqual(await store.doNotContactByPhone('+13185550164'), null);
+  assert.strictEqual(await store.doNotContactByPhone('anonymous'), null);
+
+  const pool = scriptedPool(t => /^SELECT p\.company FROM prospects p WHERE p\.phone_key = \$1/.test(t) ? [] : /^SELECT 1 AS hit FROM suppressions/.test(t) ? [{ hit: 1 }] : []);
+  assert.deepStrictEqual(await createPgStore(pool).doNotContactByPhone('(318) 555-0199'), { company: null });
+  assert.match(pool.sql[0].text, /AND \(p\.do_not_contact OR EXISTS \(SELECT 1 FROM suppressions/);
+  assert.deepStrictEqual(pool.sql.map(s => s.params), [['3185550199'], ['3185550199']]);
+});

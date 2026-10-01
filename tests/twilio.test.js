@@ -108,9 +108,15 @@ const routes = {
 };
 
 /* The do-not-contact list lives in a database. Here it is a list in
-   memory, set before any test runs, so no test can reach a real one. */
+   memory, set before any test runs, so no test can reach a real one: STOPs
+   are recorded into optOuts, and dncNumbers says which numbers are do not
+   contact (number -> company, or null for a listed number nobody owns). */
 const optOuts = [];
-routes.sms.deps.recordOptOut = async entry => { optOuts.push(entry); return { recorded: true }; };
+const dncNumbers = new Map();
+const dncDeps = require('../lib/twilio-dnc.js').deps;
+assert.strictEqual(routes.sms.deps, dncDeps, 'one set of database calls for every route');
+dncDeps.recordOptOut = async entry => { optOuts.push(entry); return { recorded: true }; };
+dncDeps.doNotContactByPhone = async phone => dncNumbers.has(phone) ? { company: dncNumbers.get(phone) } : null;
 
 /* ---------- the gate ---------- */
 
@@ -514,6 +520,90 @@ test('if a STOP cannot be recorded, the owner is told in one line and the forwar
   assert.ok(logged.some(l => /do-not-contact list/.test(l)));
   assert.ok(logged.every(l => !l.includes('secret') && !l.includes('postgresql://')), 'the database URL never reaches a log');
   assert.ok(logged.every(l => !l.includes('5550102')), 'the log shows the last four digits only');
+});
+
+/* ---------- the do-not-contact note ---------- */
+
+const NOTE_FROM = '+13185550145';
+async function withDnc(number, company, fn) {
+  dncNumbers.set(number, company);
+  try { await fn(); } finally { dncNumbers.delete(number); }
+}
+
+test('a text from a number marked do not contact is forwarded as usual, then the owner gets one note line', async () => {
+  await withDnc(NOTE_FROM, 'KESTREL LANE ROOFING LLC', () => withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    const res = fakeRes();
+    await routes.sms(smsFrom(NOTE_FROM, 'Got your letter, what does it cost?'), res);
+    assert.strictEqual(sent.length, 2);
+    assert.ok(sent.every(m => m.To === OWNER && m.From === BUSINESS), 'both to the owner, nothing to the sender');
+    assert.match(sent[0].Body, /^ColdenJames: new text from \+1 318-555-0145: "Got your letter, what does it cost\?"/, 'the forward first, unchanged');
+    assert.strictEqual(sent[1].Body, 'Note: Kestrel Lane Roofing is marked do not contact.', 'named as the letter names it');
+    assert.strictEqual(res.body.includes('<Message'), false);
+  })));
+});
+
+test('a listed number that is no prospect\'s is named by its number in the note', async () => {
+  await withDnc(NOTE_FROM, null, () => withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(NOTE_FROM, 'hello again'), fakeRes());
+    assert.strictEqual(sent[1].Body, 'Note: +1 318-555-0145 is marked do not contact.');
+  })));
+});
+
+test('no note for a number that is not do not contact, for an opt-out (it says it all), or for the owner', async () => {
+  await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OTHER, 'Are you open Saturday?'), fakeRes());
+    assert.strictEqual(sent.length, 1);
+  }));
+  await withDnc(NOTE_FROM, 'KESTREL LANE ROOFING LLC', () => withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(NOTE_FROM, 'STOP'), fakeRes());
+    assert.deepStrictEqual(sent.map(m => m.Body.startsWith('Note:')), [false], 'just the forward');
+  })));
+  await withDnc(OWNER, 'SOMEONE', () => withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    await routes.sms(smsFrom(OWNER, 'On my way'), fakeRes());
+    assert.ok(sent.every(m => !String(m.Body).startsWith('Note:')));
+  })));
+});
+
+test('a call from a number marked do not contact still rings through; the owner gets the note first', async () => {
+  await withDnc(NOTE_FROM, 'Marmot Point Builders', () => withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+    const res = fakeRes();
+    await routes.voice(fakeReq('/api/twilio/voice', { From: NOTE_FROM, To: BUSINESS }), res);
+    assert.deepStrictEqual(sent.map(m => [m.To, m.From, m.Body]), [[OWNER, BUSINESS, 'Note: Marmot Point Builders is marked do not contact.']]);
+    assert.match(res.body, /<Dial timeout="15"/, 'not blocked');
+    assert.match(res.body, new RegExp('<Number[^>]*>\\' + OWNER + '</Number>'));
+  })));
+});
+
+test('if the list cannot be read, the call and the text go through with no note, and nothing leaks to the log', async () => {
+  const real = dncDeps.doNotContactByPhone;
+  const logged = [], err = console.error;
+  dncDeps.doNotContactByPhone = async () => { throw new Error('connect failed for postgresql://someone:secret@db.example.test/x'); };
+  console.error = m => logged.push(String(m));
+  try {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      const res = fakeRes();
+      await routes.voice(fakeReq('/api/twilio/voice', { From: NOTE_FROM, To: BUSINESS }), res);
+      assert.match(res.body, /<Dial timeout="15"/);
+      await routes.sms(smsFrom(NOTE_FROM, 'hello'), fakeRes());
+      assert.strictEqual(sent.length, 1, 'only the forward');
+    }));
+  } finally { dncDeps.doNotContactByPhone = real; console.error = err; }
+  assert.ok(logged.length >= 2 && logged.every(l => !l.includes('secret') && !l.includes('postgresql://') && !l.includes('5550145')));
+});
+
+test('a slow lookup is given up on, and sends nothing', async () => {
+  const { noteIfDoNotContact, deps } = require('../lib/twilio-dnc.js');
+  const real = deps.doNotContactByPhone, err = console.error;
+  deps.doNotContactByPhone = () => new Promise(() => {});
+  console.error = () => {};
+  try {
+    await withEnv(CONFIGURED, () => fakeTwilio(async sent => {
+      const t = Date.now();
+      assert.strictEqual(await noteIfDoNotContact({ sid: SID, token: TOKEN, businessNumber: BUSINESS, ownerCell: OWNER, from: NOTE_FROM, timeoutMs: 50 }), false);
+      assert.ok(Date.now() - t < 1000);
+      assert.strictEqual(sent.length, 0);
+    }));
+  } finally { deps.doNotContactByPhone = real; console.error = err; }
 });
 
 test("the owner's own texts are never forwarded back to the owner", async () => {

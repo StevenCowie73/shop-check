@@ -12,9 +12,14 @@
 
    A call from the owner's own cell is a test: forwarding it would only ring
    the phone that is making the call. It goes straight from the greeting to
-   the missed-call path, exactly as a real missed call would. */
+   the missed-call path, exactly as a real missed call would.
+
+   A caller whose number is do not contact rings through as usual; the
+   owner first gets one line, "Note: <business> is marked do not contact."
+   (lib/twilio-dnc.js), sent before the cell rings. */
 
 const { authorize, twiml, escapeXml, requestUrl } = require('../../lib/twilio.js');
+const dnc = require('../../lib/twilio-dnc.js');
 const { play } = require('../../lib/voice-audio.js');
 
 const RING_SECONDS = 15;
@@ -25,7 +30,7 @@ module.exports = async function handler(req, res) {
   const gate = await authorize(req, res, { needOwnerCell: true });
   if (!gate) return;
 
-  const { params, ownerCell } = gate;
+  const { params, ownerCell, sid, token } = gate;
   /* The action URL has to be absolute and has to match what Twilio will
      sign when it posts the result back. */
   const action = new URL('/api/twilio/dial-status', requestUrl(req)).toString();
@@ -42,6 +47,8 @@ module.exports = async function handler(req, res) {
     twiml(res, disclosure + `<Redirect method="POST">${escapeXml(action)}</Redirect>`);
     return;
   }
+
+  await dnc.noteIfDoNotContact({ sid, token, businessNumber: params.To, ownerCell, from: params.From, timeoutMs: 1500 });
 
   /* answerOnBridge keeps the caller hearing ringing while the screen plays
      on the owner's end, rather than silence. */
